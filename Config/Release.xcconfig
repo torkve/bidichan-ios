@@ -1,0 +1,7 @@
+// Release build settings.
+// Signing values (DEVELOPMENT_TEAM, PP_APP, PP_TUNNEL) come from Signing.xcconfig,
+// which CI writes from secrets.
+#include? "Signing.xcconfig"
+
+SWIFT_COMPILATION_MODE = wholemodule
+VALIDATE_PRODUCT = YES

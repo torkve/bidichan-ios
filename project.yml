@@ -1,0 +1,96 @@
+name: bidichan
+options:
+  bundleIdPrefix: torkve
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+# DEVELOPMENT_TEAM, CODE_SIGN_STYLE and the per-target provisioning profile
+# specifiers live in xcconfig so CI can inject them without touching this file.
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGN_STYLE: Manual
+    # DEVELOPMENT_TEAM is supplied by Config/*.xcconfig (from a CI secret).
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    from: "1.2.0"
+
+targets:
+  # ---------------------------------------------------------------- framework
+  BidichanKit:
+    type: framework
+    platform: iOS
+    sources:
+      - Sources/BidichanKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan.kit
+        DEFINES_MODULE: YES
+        # Not code-signed on its own; embedded & signed by the app.
+        CODE_SIGNING_ALLOWED: NO
+
+  # ----------------------------------------------------------------- main app
+  bidichan:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+    entitlements:
+      path: Config/App.entitlements
+    info:
+      path: Config/App-Info.plist
+      properties:
+        CFBundleDisplayName: bidichan
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+    dependencies:
+      - target: BidichanKit
+        embed: true
+      - target: BidichanTunnel
+        embed: true                 # copies the .appex into PlugIns/
+      - package: SwiftTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan
+        PROVISIONING_PROFILE_SPECIFIER: $(PP_APP)
+
+  # ------------------------------------------------- packet tunnel extension
+  BidichanTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/Tunnel
+    entitlements:
+      path: Config/Tunnel.entitlements
+    info:
+      path: Config/Tunnel-Info.plist
+      properties:
+        CFBundleDisplayName: bidichan-tunnel
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    dependencies:
+      - target: BidichanKit
+        embed: false                # the app embeds the single copy
+      - framework: Vendor/Bidichan.xcframework
+        embed: true                 # the Go runtime lives in the extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan.tunnel
+        PROVISIONING_PROFILE_SPECIFIER: $(PP_TUNNEL)

@@ -1,0 +1,7 @@
+// Copy to Signing.xcconfig (git-ignored) or have CI generate it from secrets.
+// DEVELOPMENT_TEAM is your 10-char Apple Developer Team ID. PP_APP / PP_TUNNEL
+// are the provisioning-profile names (fastlane match names them, e.g.
+// "match AppStore torkve.bidichan").
+DEVELOPMENT_TEAM = ABCDE12345
+PP_APP = match AppStore torkve.bidichan
+PP_TUNNEL = match AppStore torkve.bidichan.tunnel

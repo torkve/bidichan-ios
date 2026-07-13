@@ -1,0 +1,8 @@
+// Debug build settings.
+// Signing values (DEVELOPMENT_TEAM, PP_APP, PP_TUNNEL) come from Signing.xcconfig,
+// which CI writes from secrets. The optional include keeps `xcodegen generate`
+// working locally without it.
+#include? "Signing.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
+ONLY_ACTIVE_ARCH = YES
