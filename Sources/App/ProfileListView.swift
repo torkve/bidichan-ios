@@ -8,14 +8,10 @@ struct ProfileListView: View {
     var body: some View {
         List {
             if model.store.profiles.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "network").font(.largeTitle).foregroundStyle(.secondary)
-                    Text("No profiles").font(.headline)
-                    Text("Tap + to add a bidichan server.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 24)
-                .listRowBackground(Color.clear)
+                ContentUnavailableView("No profiles",
+                                       systemImage: "network",
+                                       description: Text("Tap + to add a bidichan server."))
+                    .listRowBackground(Color.clear)
             }
             ForEach(model.store.profiles) { profile in
                 NavigationLink(value: profile) {

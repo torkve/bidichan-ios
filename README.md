@@ -45,6 +45,7 @@ xcodegen generate
 
 ## Requirements
 
+- iOS 26 or later.
 - A paid Apple Developer Program membership (the Packet Tunnel Provider
   entitlement is not available to free accounts).
 - App Group `group.torkve.bidichan` and bundle IDs
