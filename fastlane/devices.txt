@@ -1,0 +1,5 @@
+Device ID	Device Name
+# Add your iPhone(s) here for ad-hoc, one per line: <UDID><TAB><name>.
+# Find the UDID in Finder (device connected) or Settings ▸ General ▸ About ▸
+# tap the serial to reveal UDID. Example:
+# 00008120-0011223344556677	My iPhone

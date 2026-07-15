@@ -1,0 +1,153 @@
+name: build
+
+# Push to main -> TestFlight (internal). Tag v* -> TestFlight + ad-hoc OTA
+# release. Manual dispatch -> pick the lane.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "What to build"
+        default: beta
+        type: choice
+        options: [beta, adhoc, both]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    permissions:
+      contents: write        # to create the OTA release
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Decide lanes
+        id: lanes
+        run: |
+          beta=false; adhoc=false
+          case "${{ github.event_name }}" in
+            workflow_dispatch)
+              case "${{ inputs.lane }}" in
+                beta) beta=true ;;
+                adhoc) adhoc=true ;;
+                both) beta=true; adhoc=true ;;
+              esac ;;
+            push)
+              if [[ "${{ github.ref_type }}" == "tag" ]]; then beta=true; adhoc=true;
+              else beta=true; fi ;;
+          esac
+          echo "beta=$beta"  >> "$GITHUB_OUTPUT"
+          echo "adhoc=$adhoc" >> "$GITHUB_OUTPUT"
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable   # Xcode 26.x on macos-26 (iOS 26 SDK)
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: Vendor/bidichan-src/go.sum
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Install tools
+        run: |
+          brew install xcodegen
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build Bidichan.xcframework (gomobile)
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+          cd Vendor/bidichan-src
+          # gomobile needs x/mobile as a module dependency; add it CI-locally.
+          go get golang.org/x/mobile/bind@latest
+          gomobile bind -target=ios -ldflags="-s -w" \
+            -o "$GITHUB_WORKSPACE/Vendor/Bidichan.xcframework" ./mobile
+
+      - name: TestFlight (internal)
+        if: steps.lanes.outputs.beta == 'true'
+        run: bundle exec fastlane beta
+
+      - name: Ad-hoc IPA
+        if: steps.lanes.outputs.adhoc == 'true'
+        run: bundle exec fastlane adhoc
+
+      - name: Package OTA (manifest + install page)
+        if: steps.lanes.outputs.adhoc == 'true'
+        id: ota
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="adhoc-${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          IPA_URL="$BASE/bidichan.ipa"
+          ICON_URL="$BASE/icon.png"
+          MANIFEST_URL="$BASE/manifest.plist"
+
+          sips -s format png -z 512 512 Sources/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png --out build/icon.png >/dev/null
+
+          cat > build/manifest.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict><key>items</key><array><dict>
+            <key>assets</key><array>
+              <dict><key>kind</key><string>software-package</string><key>url</key><string>$IPA_URL</string></dict>
+              <dict><key>kind</key><string>display-image</string><key>url</key><string>$ICON_URL</string></dict>
+              <dict><key>kind</key><string>full-size-image</string><key>url</key><string>$ICON_URL</string></dict>
+            </array>
+            <key>metadata</key><dict>
+              <key>bundle-identifier</key><string>torkve.bidichan</string>
+              <key>bundle-version</key><string>0.1.0</string>
+              <key>kind</key><string>software</string>
+              <key>title</key><string>bidichan</string>
+            </dict>
+          </dict></array></dict></plist>
+          PLIST
+
+          ENCODED=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$MANIFEST_URL")
+          INSTALL="itms-services://?action=download-manifest&url=$ENCODED"
+          {
+            echo "## Install on device (ad-hoc OTA)"
+            echo ""
+            echo "Open this link **on the iPhone** whose UDID is registered:"
+            echo ""
+            echo "[Install bidichan]($INSTALL)"
+            echo ""
+            echo "The device must trust the developer certificate (Settings ▸ General ▸ VPN & Device Management) on first launch."
+          } > build/release-notes.md
+
+      - name: Publish OTA release
+        if: steps.lanes.outputs.adhoc == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ota.outputs.tag }}
+          name: bidichan ${{ steps.ota.outputs.tag }}
+          body_path: build/release-notes.md
+          files: |
+            build/bidichan.ipa
+            build/manifest.plist
+            build/icon.png

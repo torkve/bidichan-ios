@@ -1,0 +1,3 @@
+[submodule "Vendor/bidichan-src"]
+	path = Vendor/bidichan-src
+	url = https://github.com/torkve/bidichan.git

@@ -19,5 +19,11 @@ manifest.plist
 .build/
 .swiftpm/
 
+# fastlane artifacts
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+fastlane/README.md
+
 # macOS
 .DS_Store

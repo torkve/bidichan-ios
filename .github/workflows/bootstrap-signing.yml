@@ -1,0 +1,41 @@
+name: bootstrap-signing
+
+# Run ONCE (manually) after enrolling, to register bundle IDs + capabilities,
+# your device(s), and to create the signing certificates & provisioning
+# profiles into the match git repo. See SETUP.md.
+on:
+  workflow_dispatch:
+    inputs:
+      run_app_groups:
+        description: "Also create/associate the App Group (may need an Apple-ID session)"
+        default: false
+        type: boolean
+
+jobs:
+  bootstrap:
+    runs-on: macos-26
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      # Only needed if run_app_groups is true and produce falls back to Apple ID:
+      FASTLANE_APPLE_ID: ${{ secrets.FASTLANE_APPLE_ID }}
+      FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Register IDs, devices, certs & profiles
+        run: bundle exec fastlane bootstrap
+      - name: Create & associate the App Group
+        if: ${{ inputs.run_app_groups }}
+        run: bundle exec fastlane app_groups

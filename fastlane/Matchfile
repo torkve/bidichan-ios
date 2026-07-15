@@ -1,0 +1,11 @@
+# fastlane match: certificates & provisioning profiles stored (encrypted) in a
+# git repo, so signing is fully headless on the CI macOS runner.
+git_url ENV["MATCH_GIT_URL"]
+storage_mode "git"
+
+# Both bundle IDs are managed together.
+app_identifier ["torkve.bidichan", "torkve.bidichan.tunnel"]
+team_id ENV["APPLE_TEAM_ID"]
+
+# `type` is overridden per-lane (development / appstore / adhoc).
+type "development"

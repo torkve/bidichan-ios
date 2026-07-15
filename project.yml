@@ -69,6 +69,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan
         PROVISIONING_PROFILE_SPECIFIER: $(PP_APP)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # ------------------------------------------------- packet tunnel extension
   BidichanTunnel:
