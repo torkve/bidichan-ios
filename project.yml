@@ -54,6 +54,10 @@ targets:
       path: Config/App-Info.plist
       properties:
         CFBundleDisplayName: bidichan
+        # Reference the build settings so CURRENT_PROJECT_VERSION (set per CI run)
+        # actually drives CFBundleVersion — XcodeGen otherwise hardcodes "1".
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
@@ -98,6 +102,8 @@ targets:
       path: Config/Tunnel-Info.plist
       properties:
         CFBundleDisplayName: bidichan-tunnel
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
