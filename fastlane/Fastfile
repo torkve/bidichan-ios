@@ -43,6 +43,9 @@ def gym_build(export_method:, profile_type:)
     output_directory: File.join(ROOT, "build"),
     output_name: "bidichan.ipa",
     clean: true,
+    # Force a unique build number on the command line (beats XcodeGen's
+    # target-level default); each CI run must upload a higher CFBundleVersion.
+    xcargs: "CURRENT_PROJECT_VERSION=#{ENV['BUILD_NUMBER'] || '1'}",
     export_options: {
       signingStyle: "manual",
       provisioningProfiles: {
