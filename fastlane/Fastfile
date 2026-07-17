@@ -27,6 +27,10 @@ def write_signing_xcconfig(profile_type)
     PP_APP = match #{profile_type} #{APP_ID}
     PP_TUNNEL = match #{profile_type} #{TUNNEL_ID}
     CURRENT_PROJECT_VERSION = #{build_number}
+    // Both App Store and Ad Hoc archives sign with the Apple Distribution cert;
+    // without this, manual signing defaults to "iOS Development" and fails.
+    CODE_SIGN_IDENTITY = Apple Distribution
+    CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
   CFG
 end
 
