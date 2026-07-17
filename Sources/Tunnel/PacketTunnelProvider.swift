@@ -66,9 +66,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             AppLog.log("go start: peer up")
 
-            let server = hostname.isEmpty ? host(fromAddr: addr) : hostname
+            // tunnelRemoteAddress must be a numeric IP, not a hostname.
+            let serverIP = self.tunnelRemoteIP(bridge: bridge, addr: addr, hostname: hostname)
+            AppLog.log("tunnel remote address: \(serverIP)")
             self.applyTunnelSettings(cidr: cidr, mtu: mtu, fullTunnel: enableTUN && fullTunnel,
-                                     server: server) { settingsErr in
+                                     server: serverIP) { settingsErr in
                 if let settingsErr {
                     self.fail("network settings: \(settingsErr.localizedDescription)", completionHandler)
                     return
@@ -302,12 +304,46 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 }
 
-private func host(fromAddr addr: String) -> String {
-    // "host:port" -> "host" (leave bracketed IPv6 literals intact).
-    if let idx = addr.lastIndex(of: ":"), !addr.hasSuffix("]") {
-        return String(addr[..<idx])
+extension PacketTunnelProvider {
+    /// Resolves the tunnel's remote endpoint to a numeric IP (required by
+    /// NEPacketTunnelNetworkSettings). Prefers the exact IP the peer connection
+    /// resolved to (from status), then DNS, then the bare host as a last resort.
+    func tunnelRemoteIP(bridge: GoBridge, addr: String, hostname: String) -> String {
+        if let json = try? bridge.control(Control.status()),
+           let remote = (try? ControlDecode.status(json))?.peers?.first?.remote {
+            let ip = Self.stripPort(remote)
+            if !ip.isEmpty { return ip }
+        }
+        let h = hostname.isEmpty ? Self.stripPort(addr) : hostname
+        return Self.resolveIP(h) ?? h
     }
-    return addr
+
+    /// "1.2.3.4:443" -> "1.2.3.4"; "[::1]:443" -> "::1"; "host" -> "host".
+    static func stripPort(_ hostPort: String) -> String {
+        if hostPort.hasPrefix("["), let end = hostPort.firstIndex(of: "]") {
+            return String(hostPort[hostPort.index(after: hostPort.startIndex)..<end])
+        }
+        if let idx = hostPort.lastIndex(of: ":") {
+            return String(hostPort[..<idx])
+        }
+        return hostPort
+    }
+
+    /// Resolves a host (or passes an IP literal through) to a numeric IP string.
+    static func resolveIP(_ host: String) -> String? {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        var res: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &res) == 0, let info = res else { return nil }
+        defer { freeaddrinfo(res) }
+        var buf = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        guard getnameinfo(info.pointee.ai_addr, info.pointee.ai_addrlen,
+                          &buf, socklen_t(buf.count), nil, 0, NI_NUMERICHOST) == 0 else {
+            return nil
+        }
+        return String(cString: buf)
+    }
 }
 
 /// Parsed CIDR: address, prefix, IPv4 subnet mask and network base.
