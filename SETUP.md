@@ -60,9 +60,6 @@ Add these to **bidichan-ios ▸ Settings ▸ Secrets and variables ▸ Actions**
 | `MATCH_PASSWORD` | a passphrase you choose (encrypts the match repo) |
 | `DEVICE_UDIDS` | your device UDID(s) for ad-hoc — see step 4 (skip if TestFlight only) |
 
-Optional (only if `app_groups` needs an Apple-ID fallback — see step 5):
-`FASTLANE_APPLE_ID`, `FASTLANE_APP_SPECIFIC_PASSWORD`.
-
 ## 4. Register your device (for ad-hoc)
 
 This repo is public, so the device UDID must **not** be committed (a UDID is a
@@ -82,30 +79,39 @@ TestFlight does not need this; ad-hoc OTA does. Adding a device later means
 updating the secret and re-running the bootstrap workflow so the ad-hoc profile
 picks up the new UDID.
 
-## 5. One-time bootstrap
+## 5. One-time Portal setup (web UI, no Mac needed)
+
+An App ID carrying the Network Extension entitlement plus an App Group can't be
+created headlessly with only an API key — the App Store Connect API has no
+app-creation endpoint, and app groups aren't in it. So do this once in Apple's
+web portals:
+
+1. **Bundle IDs** — [Developer portal ▸ Identifiers](https://developer.apple.com/account/resources/identifiers/list)
+   ▸ **＋**. Create two App IDs and, on each, enable the **App Groups** and
+   **Network Extensions** capabilities:
+   - `torkve.bidichan` (name "bidichan")
+   - `torkve.bidichan.tunnel` (name "bidichan tunnel")
+2. **App Group** — Identifiers ▸ the top-left type dropdown ▸ **App Groups** ▸
+   **＋** ▸ create `group.torkve.bidichan`. Then edit each bundle ID, click
+   **Configure** next to App Groups, and assign this group to **both**.
+3. **App Store Connect app record** (needed for TestFlight) —
+   [App Store Connect ▸ Apps](https://appstoreconnect.apple.com/apps) ▸ **＋ ▸
+   New App**, platform iOS, pick the `torkve.bidichan` bundle ID, set a name +
+   SKU. Then in that app ▸ **TestFlight**, add yourself as an **internal tester**
+   so builds show up in the TestFlight app.
+
+## 6. One-time bootstrap (signing)
 
 Run the **bootstrap-signing** workflow (Actions ▸ bootstrap-signing ▸ Run
-workflow). It:
+workflow). Using the API key it registers your device(s) (from the
+`DEVICE_UDIDS` secret) and creates the development / App Store / ad-hoc
+certificates and provisioning profiles into the match repo.
 
-- registers the bundle IDs `torkve.bidichan` and `torkve.bidichan.tunnel` with
-  the **App Groups** and **Network Extensions** capabilities,
-- creates the App Store Connect app record,
-- registers the device(s) from `devices.txt`,
-- creates the development / App Store / ad-hoc certificates and provisioning
-  profiles into the match repo.
+It must finish **green**. If a `match` pass fails while *generating a profile*,
+the step-5 Portal setup is incomplete — almost always the App Group isn't
+assigned to both bundle IDs. Fix that and re-run.
 
-**App Group:** capability enabling is automated, but creating and associating
-the specific group `group.torkve.bidichan` sometimes needs an Apple-ID session.
-If signing later complains about the app group, either tick **"Also create the
-App Group"** when dispatching bootstrap (set `FASTLANE_APPLE_ID` +
-`FASTLANE_APP_SPECIFIC_PASSWORD` first), or create it once in the Developer
-portal (Identifiers ▸ App Groups ▸ `group.torkve.bidichan`) and assign it to
-both bundle IDs, then re-run bootstrap so the profiles pick it up.
-
-Add yourself as an **internal tester** in App Store Connect ▸ your app ▸
-TestFlight, so builds appear in the TestFlight app.
-
-## 6. Ship
+## 7. Ship
 
 | Trigger | Result |
 |---|---|

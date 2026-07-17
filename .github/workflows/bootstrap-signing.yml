@@ -1,15 +1,10 @@
 name: bootstrap-signing
 
-# Run ONCE (manually) after enrolling, to register bundle IDs + capabilities,
-# your device(s), and to create the signing certificates & provisioning
-# profiles into the match git repo. See SETUP.md.
+# Run ONCE (manually) after the one-time Portal setup (SETUP.md) to register
+# your device(s) and create the signing certificates & provisioning profiles
+# into the match git repo.
 on:
   workflow_dispatch:
-    inputs:
-      run_app_groups:
-        description: "Also create/associate the App Group (may need an Apple-ID session)"
-        default: false
-        type: boolean
 
 jobs:
   bootstrap:
@@ -22,9 +17,6 @@ jobs:
       MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-      # Only needed if run_app_groups is true and produce falls back to Apple ID:
-      FASTLANE_APPLE_ID: ${{ secrets.FASTLANE_APPLE_ID }}
-      FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APP_SPECIFIC_PASSWORD }}
       # Job-level so it's usable in the step `if:` (the secrets context is not).
       DEVICE_UDIDS: ${{ secrets.DEVICE_UDIDS }}
     steps:
@@ -55,8 +47,5 @@ jobs:
             done <<< "$DEVICE_UDIDS"
           } > fastlane/devices.txt
 
-      - name: Register IDs, devices, certs & profiles
+      - name: Register devices + create certs & profiles
         run: bundle exec fastlane bootstrap
-      - name: Create & associate the App Group
-        if: ${{ inputs.run_app_groups }}
-        run: bundle exec fastlane app_groups
