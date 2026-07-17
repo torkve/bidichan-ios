@@ -25,6 +25,10 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
     public var fullTunnel: Bool         // route all traffic vs just the tun subnet
     public var memoryLimitMB: Int       // soft Go heap cap inside the NE
 
+    // Channels opened automatically once this profile connects. Property-level
+    // default keeps older saved profiles (which lack the key) decodable.
+    public var channels: [ChannelConfig] = []
+
     public init(id: UUID = UUID(),
                 name: String = "New profile",
                 serverAddress: String = "",
@@ -38,7 +42,8 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
                 tunCIDR6: String = "fd00:bd::2/64",
                 tunMTU: Int = 1400,
                 fullTunnel: Bool = false,
-                memoryLimitMB: Int = 40) {
+                memoryLimitMB: Int = 40,
+                channels: [ChannelConfig] = []) {
         self.id = id
         self.name = name
         self.serverAddress = serverAddress
@@ -53,6 +58,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
         self.tunMTU = tunMTU
         self.fullTunnel = fullTunnel
         self.memoryLimitMB = memoryLimitMB
+        self.channels = channels
     }
 
     /// Keychain account under which this profile's PSK is stored.

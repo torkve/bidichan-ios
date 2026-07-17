@@ -17,6 +17,9 @@ final class AppModel: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
+    // Default channels captured at connect time, opened once we reach .connected.
+    private var pendingDefaults: [ChannelConfig] = []
+
     init() {
         // ProfileStore is a nested ObservableObject; @Published var store only
         // fires on reassignment, so forward its changes to our own observers or
@@ -30,7 +33,19 @@ final class AppModel: ObservableObject {
             .sink { [weak self] s in
                 guard let self else { return }
                 self.status = s
-                if s == .connected { self.startPolling() } else { self.stopPolling() }
+                if s == .connected {
+                    self.startPolling()
+                    // Open the profile's default channels once, after the daemon
+                    // is up. Consume the list so a later reassert->connected
+                    // transition doesn't reopen them.
+                    if !self.pendingDefaults.isEmpty {
+                        let defaults = self.pendingDefaults
+                        self.pendingDefaults = []
+                        Task { await self.openDefaultChannels(defaults) }
+                    }
+                } else {
+                    self.stopPolling()
+                }
                 // On failure/drop the extension records why (NEVPNManager hides
                 // the provider's Error); surface it once.
                 if s == .disconnected || s == .invalid, let err = AppGroup.lastError() {
@@ -67,17 +82,40 @@ final class AppModel: ObservableObject {
             return
         }
         AppGroup.setLastError(nil)   // clear any stale failure from a prior attempt
+        pendingDefaults = profile.channels
         do {
             try await tunnel.install(profile: profile)
             try tunnel.start()
         } catch {
+            pendingDefaults = []
             errorMessage = error.localizedDescription
         }
     }
 
     func disconnect() {
+        pendingDefaults = []
         tunnel.stop()
         peers = []
+    }
+
+    /// Opens a profile's configured default channels in order once connected,
+    /// publishing the first proxy flagged for system routing.
+    private func openDefaultChannels(_ configs: [ChannelConfig]) async {
+        var appliedSystemProxy = false
+        for c in configs {
+            let label = c.label.isEmpty ? nil : c.label
+            if c.kind.isProxy {
+                await openProxy(c.kind == .http ? .http : .socks5,
+                                side: .local, listen: c.listenAddr, label: label)
+                if c.routeSystem && !appliedSystemProxy {
+                    await setSystemProxy(kind: c.kind.proxyKind, host: "127.0.0.1", port: c.port)
+                    appliedSystemProxy = true
+                }
+            } else {
+                await openForward(side: c.kind.side, listen: c.listenAddr,
+                                  target: c.target, label: label)
+            }
+        }
     }
 
     // MARK: - Channels
@@ -99,15 +137,15 @@ final class AppModel: ObservableObject {
     struct SystemProxy: Equatable { var kind: String; var host: String; var port: Int }
     @Published var systemProxy: SystemProxy?
 
-    func openProxy(_ kind: ChannelKind, side: Side, listen: String) async {
+    func openProxy(_ kind: ChannelKind, side: Side, listen: String, label: String? = nil) async {
         let json = kind == .http
-            ? Control.openHTTP(.init(listenSide: side, listenAddr: listen))
-            : Control.openSocks5(.init(listenSide: side, listenAddr: listen))
+            ? Control.openHTTP(.init(listenSide: side, listenAddr: listen, label: label))
+            : Control.openSocks5(.init(listenSide: side, listenAddr: listen, label: label))
         await control(json)
     }
 
-    func openForward(side: Side, listen: String, target: String) async {
-        await control(Control.openForward(.init(listenSide: side, listenAddr: listen, targetAddr: target)))
+    func openForward(side: Side, listen: String, target: String, label: String? = nil) async {
+        await control(Control.openForward(.init(listenSide: side, listenAddr: listen, targetAddr: target, label: label)))
     }
 
     func openTUN(cidr: String, mtu: Int) async {

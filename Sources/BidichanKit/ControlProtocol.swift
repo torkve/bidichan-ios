@@ -137,6 +137,8 @@ public struct ChannelSnapshot: Decodable, Identifiable, Equatable, Hashable {
     public let originator: Bool
     public let createdAt: String
     public let description: String
+    // Optional: older cores omit it, and not every channel carries a label.
+    public let label: String?
 }
 
 public struct PeerStatus: Decodable, Identifiable, Equatable {

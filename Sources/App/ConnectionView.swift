@@ -57,7 +57,12 @@ struct ConnectionView: View {
                     ForEach(channels) { ch in
                         NavigationLink(value: ch) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(ch.kind) · #\(ch.id)").font(.headline)
+                                if let l = ch.label, !l.isEmpty {
+                                    Text(l).font(.headline)
+                                    Text("\(ch.kind) · #\(ch.id)").font(.caption).foregroundStyle(.secondary)
+                                } else {
+                                    Text("\(ch.kind) · #\(ch.id)").font(.headline)
+                                }
                                 Text(ch.description).font(.caption).foregroundStyle(.secondary)
                             }
                         }

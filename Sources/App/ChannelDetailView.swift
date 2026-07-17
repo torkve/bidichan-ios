@@ -22,6 +22,9 @@ struct ChannelDetailView: View {
     var body: some View {
         Form {
             Section("Channel") {
+                if let l = channel.label, !l.isEmpty {
+                    LabeledContent("Label", value: l)
+                }
                 LabeledContent("Kind", value: channel.kind)
                 LabeledContent("ID", value: "#\(channel.id)")
                 if let bound { LabeledContent("Bound", value: bound) }

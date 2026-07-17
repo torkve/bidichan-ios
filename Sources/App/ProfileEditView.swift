@@ -7,6 +7,7 @@ struct ProfileEditView: View {
 
     @State private var profile: Profile
     @State private var psk: String = ""
+    @State private var editingChannel: ChannelConfig?
 
     init(profile: Profile) {
         _profile = State(initialValue: profile)
@@ -54,6 +55,31 @@ struct ProfileEditView: View {
                 Toggle("Route all traffic (full tunnel)", isOn: $profile.fullTunnel)
             }
 
+            Section {
+                ForEach(profile.channels) { c in
+                    Button {
+                        editingChannel = c
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.displayName).foregroundStyle(.primary)
+                            Text("\(c.kind.title) · \(c.listenAddr)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .onDelete { profile.channels.remove(atOffsets: $0) }
+
+                Button {
+                    editingChannel = ChannelConfig()
+                } label: {
+                    Label("Add default channel", systemImage: "plus")
+                }
+            } header: {
+                Text("Default channels")
+            } footer: {
+                Text("Opened automatically after this profile connects.")
+            }
+
             Section("Advanced") {
                 Stepper("NE memory limit: \(profile.memoryLimitMB) MB",
                         value: $profile.memoryLimitMB, in: 20...80, step: 5)
@@ -74,6 +100,15 @@ struct ProfileEditView: View {
             }
         }
         .onAppear { psk = model.store.psk(for: profile) ?? "" }
+        .sheet(item: $editingChannel) { channel in
+            ChannelConfigEditView(config: channel) { edited in
+                if let idx = profile.channels.firstIndex(where: { $0.id == edited.id }) {
+                    profile.channels[idx] = edited
+                } else {
+                    profile.channels.append(edited)
+                }
+            }
+        }
     }
 
     private func save() {
@@ -83,5 +118,33 @@ struct ProfileEditView: View {
             try? model.store.setPSK(trimmed, for: profile)
         }
         dismiss()
+    }
+}
+
+/// Sheet that edits one default `ChannelConfig` and hands the result back.
+struct ChannelConfigEditView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var config: ChannelConfig
+    let onSave: (ChannelConfig) -> Void
+
+    init(config: ChannelConfig, onSave: @escaping (ChannelConfig) -> Void) {
+        _config = State(initialValue: config)
+        self.onSave = onSave
+    }
+
+    private var portValid: Bool { config.port > 0 && config.port <= 65535 }
+
+    var body: some View {
+        NavigationStack {
+            Form { ChannelConfigFields(config: $config) }
+                .navigationTitle("Default channel")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { onSave(config); dismiss() }.disabled(!portValid)
+                    }
+                }
+        }
     }
 }
