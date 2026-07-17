@@ -25,5 +25,9 @@ fastlane/Preview.html
 fastlane/test_output/
 fastlane/README.md
 
+# Device list is generated on CI from the DEVICE_UDIDS secret — never commit it
+# (a UDID in a public repo is a persistent device fingerprint).
+fastlane/devices.txt
+
 # macOS
 .DS_Store

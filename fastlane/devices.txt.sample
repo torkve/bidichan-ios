@@ -1,0 +1,13 @@
+# fastlane/devices.txt is NOT committed (it would expose your device UDID in a
+# public repo). It is generated on CI from the `DEVICE_UDIDS` GitHub secret by
+# the bootstrap-signing workflow.
+#
+# Set the DEVICE_UDIDS secret to one device per line, "UDID Name" (the name is
+# optional and may contain spaces). CI normalizes it into the tab-separated
+# format fastlane expects. Example secret value:
+#
+#   00008120-0011223344556677 My iPhone
+#   00008130-00AABBCCDDEEFF00 iPad
+#
+# Find the UDID in Finder (device connected) or Settings > General > About >
+# tap the serial to reveal the UDID.

@@ -34,6 +34,27 @@ jobs:
         with:
           ruby-version: "3.3"
           bundler-cache: true
+
+      # devices.txt is not in the repo (public); build it from the secret so the
+      # UDID never lands in git. Secret format: one "UDID Name" per line.
+      - name: Materialize devices.txt from secret
+        if: ${{ secrets.DEVICE_UDIDS != '' }}
+        env:
+          DEVICE_UDIDS: ${{ secrets.DEVICE_UDIDS }}
+        run: |
+          {
+            printf 'Device ID\tDevice Name\n'
+            while IFS= read -r line; do
+              [ -z "${line// }" ] && continue
+              case "$line" in \#*) continue ;; esac
+              udid=${line%%[[:space:]]*}
+              name=${line#"$udid"}
+              name=${name# }
+              [ -z "$name" ] && name="device"
+              printf '%s\t%s\n' "$udid" "$name"
+            done <<< "$DEVICE_UDIDS"
+          } > fastlane/devices.txt
+
       - name: Register IDs, devices, certs & profiles
         run: bundle exec fastlane bootstrap
       - name: Create & associate the App Group

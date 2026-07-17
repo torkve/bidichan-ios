@@ -58,21 +58,29 @@ Add these to **bidichan-ios ▸ Settings ▸ Secrets and variables ▸ Actions**
 | `MATCH_GIT_URL` | HTTPS URL of the private match repo |
 | `MATCH_GIT_BASIC_AUTHORIZATION` | base64 `user:pat` (step 2) |
 | `MATCH_PASSWORD` | a passphrase you choose (encrypts the match repo) |
+| `DEVICE_UDIDS` | your device UDID(s) for ad-hoc — see step 4 (skip if TestFlight only) |
 
 Optional (only if `app_groups` needs an Apple-ID fallback — see step 5):
 `FASTLANE_APPLE_ID`, `FASTLANE_APP_SPECIFIC_PASSWORD`.
 
 ## 4. Register your device (for ad-hoc)
 
+This repo is public, so the device UDID must **not** be committed (a UDID is a
+persistent device fingerprint). Instead put it in the **`DEVICE_UDIDS` secret**;
+the bootstrap workflow writes `fastlane/devices.txt` from it at run time (that
+path is git-ignored).
+
 Find your iPhone's **UDID** (Finder with the device connected, or Settings ▸
-General ▸ About ▸ tap the serial). Add it to `fastlane/devices.txt`:
+General ▸ About ▸ tap the serial). Set `DEVICE_UDIDS` to one device per line,
+`UDID Name` (the name is optional and may contain spaces):
 
 ```
-Device ID	Device Name
-00008120-0011223344556677	My iPhone
+00008120-0011223344556677 My iPhone
 ```
 
-Commit and push. (TestFlight does not need this; ad-hoc does.)
+TestFlight does not need this; ad-hoc OTA does. Adding a device later means
+updating the secret and re-running the bootstrap workflow so the ad-hoc profile
+picks up the new UDID.
 
 ## 5. One-time bootstrap
 
