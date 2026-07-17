@@ -95,20 +95,46 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func openSocks5(listen: String) async {
-        await control(Control.openSocks5(.init(listenSide: .local, listenAddr: listen)))
+    /// The proxy currently published to the system via NEProxySettings, if any.
+    struct SystemProxy: Equatable { var kind: String; var host: String; var port: Int }
+    @Published var systemProxy: SystemProxy?
+
+    func openProxy(_ kind: ChannelKind, side: Side, listen: String) async {
+        let json = kind == .http
+            ? Control.openHTTP(.init(listenSide: side, listenAddr: listen))
+            : Control.openSocks5(.init(listenSide: side, listenAddr: listen))
+        await control(json)
     }
 
-    func openHTTP(listen: String) async {
-        await control(Control.openHTTP(.init(listenSide: .local, listenAddr: listen)))
-    }
-
-    func openForward(listen: String, target: String) async {
-        await control(Control.openForward(.init(listenSide: .local, listenAddr: listen, targetAddr: target)))
+    func openForward(side: Side, listen: String, target: String) async {
+        await control(Control.openForward(.init(listenSide: side, listenAddr: listen, targetAddr: target)))
     }
 
     func openTUN(cidr: String, mtu: Int) async {
         await control(Control.openTUN(.init(cidr: cidr, mtu: mtu)))
+    }
+
+    /// Publishes a local proxy to the system (routes other apps through it).
+    func setSystemProxy(kind: String, host: String, port: Int) async {
+        do {
+            let resp = try await tunnel.send(.setSystemProxy(kind: kind, host: host, port: port))
+            if resp.ok {
+                systemProxy = SystemProxy(kind: kind, host: host, port: port)
+            } else {
+                errorMessage = resp.error ?? "failed to set system proxy"
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func clearSystemProxy() async {
+        do {
+            _ = try await tunnel.send(.clearSystemProxy())
+        } catch {
+            // best effort; still clear locally
+        }
+        systemProxy = nil
     }
 
     func closeChannel(_ id: UInt64) async {
@@ -147,5 +173,6 @@ final class AppModel: ObservableObject {
         pollTask?.cancel()
         pollTask = nil
         peers = []
+        systemProxy = nil   // extension state is gone once disconnected
     }
 }

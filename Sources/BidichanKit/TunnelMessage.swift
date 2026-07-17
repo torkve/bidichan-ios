@@ -10,6 +10,8 @@ public struct TunnelRequest: Codable {
         case shellWrite
         case shellResize
         case shellClose
+        case setSystemProxy   // publish a local proxy to the system via NEProxySettings
+        case clearSystemProxy
         case ping
     }
 
@@ -20,10 +22,14 @@ public struct TunnelRequest: Codable {
     public var rows: Int?
     public var cols: Int?
     public var dataBase64: String?
+    public var proxyKind: String?   // "http" | "socks5"
+    public var proxyHost: String?
+    public var proxyPort: Int?
 
     public init(op: Op, reqJSON: String? = nil, shellID: String? = nil,
                 term: String? = nil, rows: Int? = nil, cols: Int? = nil,
-                dataBase64: String? = nil) {
+                dataBase64: String? = nil, proxyKind: String? = nil,
+                proxyHost: String? = nil, proxyPort: Int? = nil) {
         self.op = op
         self.reqJSON = reqJSON
         self.shellID = shellID
@@ -31,6 +37,9 @@ public struct TunnelRequest: Codable {
         self.rows = rows
         self.cols = cols
         self.dataBase64 = dataBase64
+        self.proxyKind = proxyKind
+        self.proxyHost = proxyHost
+        self.proxyPort = proxyPort
     }
 
     public static func control(_ json: String) -> TunnelRequest { .init(op: .control, reqJSON: json) }
@@ -46,6 +55,10 @@ public struct TunnelRequest: Codable {
         .init(op: .shellResize, shellID: id, rows: rows, cols: cols)
     }
     public static func shellClose(_ id: String) -> TunnelRequest { .init(op: .shellClose, shellID: id) }
+    public static func setSystemProxy(kind: String, host: String, port: Int) -> TunnelRequest {
+        .init(op: .setSystemProxy, proxyKind: kind, proxyHost: host, proxyPort: port)
+    }
+    public static func clearSystemProxy() -> TunnelRequest { .init(op: .clearSystemProxy) }
 }
 
 /// Reply from the tunnel extension to the app.

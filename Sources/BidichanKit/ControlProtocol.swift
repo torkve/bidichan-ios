@@ -131,7 +131,7 @@ public enum ControlDecode {
 
 // MARK: - Response models (mirror internal/daemon/ctrl.go + internal/peer)
 
-public struct ChannelSnapshot: Decodable, Identifiable, Equatable {
+public struct ChannelSnapshot: Decodable, Identifiable, Equatable, Hashable {
     public let id: UInt64
     public let kind: String
     public let originator: Bool

@@ -11,6 +11,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private let shellsLock = NSLock()
     private var shells: [String: GoShell] = [:]
 
+    // Stored so network settings can be rebuilt (e.g. to add/remove a system
+    // proxy) after the tunnel is already up.
+    private struct TunnelConfig {
+        var cidr: String, cidr6: String, mtu: Int, fullTunnel: Bool, server: String
+    }
+    private var tunnelConfig: TunnelConfig?
+    private var systemProxy: (kind: String, host: String, port: Int)?
+
     // MARK: - Lifecycle
 
     override func startTunnel(options: [String: NSObject]?,
@@ -70,9 +78,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             // tunnelRemoteAddress must be a numeric IP, not a hostname.
             let serverIP = self.tunnelRemoteIP(bridge: bridge, addr: addr, hostname: hostname)
             AppLog.log("tunnel remote address: \(serverIP)")
-            self.applyTunnelSettings(cidr: cidr, cidr6: cidr6, mtu: mtu,
-                                     fullTunnel: enableTUN && fullTunnel,
-                                     server: serverIP) { settingsErr in
+            self.tunnelConfig = TunnelConfig(cidr: cidr, cidr6: cidr6, mtu: mtu,
+                                             fullTunnel: enableTUN && fullTunnel, server: serverIP)
+            self.rebuildAndApply { settingsErr in
                 if let settingsErr {
                     self.fail("network settings: \(settingsErr.localizedDescription)", completionHandler)
                     return
@@ -161,6 +169,20 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             handleShellResize(req, completionHandler)
         case .shellClose:
             handleShellClose(req, completionHandler)
+        case .setSystemProxy:
+            systemProxy = (req.proxyKind ?? "http", req.proxyHost ?? "127.0.0.1", req.proxyPort ?? 0)
+            AppLog.log("system proxy: set \(systemProxy!.kind) \(systemProxy!.host):\(systemProxy!.port)")
+            rebuildAndApply { err in
+                completionHandler((err.map { TunnelResponse.failure($0.localizedDescription) }
+                                   ?? TunnelResponse(ok: true)).encoded())
+            }
+        case .clearSystemProxy:
+            systemProxy = nil
+            AppLog.log("system proxy: cleared")
+            rebuildAndApply { err in
+                completionHandler((err.map { TunnelResponse.failure($0.localizedDescription) }
+                                   ?? TunnelResponse(ok: true)).encoded())
+            }
         }
     }
 
@@ -262,9 +284,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - Network settings
 
-    private func applyTunnelSettings(cidr: String, cidr6: String, mtu: Int, fullTunnel: Bool,
-                                     server: String,
-                                     completion: @escaping (Error?) -> Void) {
+    /// Re-applies the tunnel settings built from the stored config (used both at
+    /// startup and when the system proxy changes mid-session).
+    private func rebuildAndApply(completion: @escaping (Error?) -> Void) {
+        guard let settings = buildSettings() else {
+            completion(providerError("no tunnel config"))
+            return
+        }
+        setTunnelNetworkSettings(settings, completionHandler: completion)
+    }
+
+    private func buildSettings() -> NEPacketTunnelNetworkSettings? {
+        guard let c = tunnelConfig else { return nil }
+        let cidr = c.cidr, cidr6 = c.cidr6, mtu = c.mtu, fullTunnel = c.fullTunnel, server = c.server
         let settings = NEPacketTunnelNetworkSettings(
             tunnelRemoteAddress: server.isEmpty ? "127.0.0.1" : server)
         settings.mtu = NSNumber(value: mtu)
@@ -308,7 +340,31 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             dns.matchDomains = [""]   // use the tunnel resolver for all lookups
             settings.dnsSettings = dns
         }
-        setTunnelNetworkSettings(settings, completionHandler: completion)
+
+        if let p = systemProxy {
+            settings.proxySettings = makeProxySettings(kind: p.kind, host: p.host, port: p.port)
+        }
+        return settings
+    }
+
+    /// System proxy config the OS hands to apps. HTTP is set natively; SOCKS5 is
+    /// expressed through a PAC (honored by apps that support PAC).
+    private func makeProxySettings(kind: String, host: String, port: Int) -> NEProxySettings {
+        let ps = NEProxySettings()
+        if kind == "socks5" {
+            ps.autoProxyConfigurationEnabled = true
+            ps.proxyAutoConfigurationJavaScript =
+                "function FindProxyForURL(url, host){return \"SOCKS5 \(host):\(port); " +
+                "SOCKS \(host):\(port); DIRECT\";}"
+        } else {
+            let server = NEProxyServer(address: host, port: port)
+            ps.httpEnabled = true
+            ps.httpServer = server
+            ps.httpsEnabled = true
+            ps.httpsServer = server
+        }
+        ps.matchDomains = [""]
+        return ps
     }
 
     // MARK: - Helpers
