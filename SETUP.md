@@ -27,8 +27,19 @@ base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n'
 
 ## 2. A token for the match repo
 
-Create a GitHub Personal Access Token (classic, `repo` scope, or a fine-grained
-token limited to the match repo). Compute:
+Create a GitHub Personal Access Token that can read **and write** the private
+match repo (match *pushes* the new certs/profiles during bootstrap):
+
+- **Fine-grained** (recommended): Repository access limited to the match repo,
+  Permissions ▸ **Contents: Read and write** (Metadata: Read is auto-included).
+  Nothing else. If the repo lives under an org, approve the token for that org.
+- **Classic**: the **`repo`** scope.
+
+> Normal builds run `match(readonly: true)` and only clone, so read alone would
+> cover `build.yml`; write is only needed for the one-time `bootstrap` lane. The
+> same secret serves both, so grant read+write.
+
+Compute the basic-auth secret:
 
 ```sh
 printf '%s' 'YOUR_GH_USERNAME:YOUR_PAT' | base64
