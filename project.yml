@@ -38,6 +38,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan.kit
         DEFINES_MODULE: YES
+        # Generate the framework's Info.plist (no explicit info: block); without
+        # this the embedded framework has no Info.plist and the archive fails.
+        GENERATE_INFOPLIST_FILE: YES
         # Not code-signed on its own; embedded & signed by the app.
         CODE_SIGNING_ALLOWED: NO
 
