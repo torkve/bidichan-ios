@@ -84,6 +84,12 @@ jobs:
           gomobile bind -target=ios -ldflags="-s -w" \
             -o "$GITHUB_WORKSPACE/Vendor/Bidichan.xcframework" ./mobile
 
+      - name: Dump gomobile ObjC API (debug)
+        run: |
+          hdr=$(find Vendor/Bidichan.xcframework -name '*.objc.h' | head -1)
+          echo "===HEADER=== $hdr"
+          sed -n '1,600p' "$hdr"
+
       - name: TestFlight (internal)
         if: steps.lanes.outputs.beta == 'true'
         run: bundle exec fastlane beta
