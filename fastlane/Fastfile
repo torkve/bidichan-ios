@@ -87,9 +87,12 @@ platform :ios do
   # afterward to mint fresh, repo-stored certs.
   desc "Revoke all dev/distribution certs & profiles (clears orphans from failed runs)"
   lane :nuke do
+    # setup_ci (before_all) enables read-only match on CI; nuke must be able to
+    # write/revoke, so clear the flag and force readonly off.
+    ENV.delete("MATCH_READONLY")
     key = asc_api_key
     %w[development distribution].each do |t|
-      match_nuke(type: t, api_key: key, skip_confirmation: true)
+      match_nuke(type: t, api_key: key, skip_confirmation: true, readonly: false)
     end
   end
 
