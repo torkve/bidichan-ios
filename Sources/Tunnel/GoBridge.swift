@@ -1,5 +1,14 @@
 import Foundation
 import Bidichan
+import BidichanKit
+
+/// Forwards the Go core's log lines to the shared on-device log.
+final class GoLogger: NSObject, MobileLoggerProtocol {
+    func log(_ line: String?) {
+        guard let line else { return }
+        AppLog.log("go: " + line.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+}
 
 // GoBridge is the ONLY place that touches the gomobile-generated `Mobile*` API.
 // Names/signatures below are matched to the generated Mobile.objc.h:
@@ -12,10 +21,12 @@ import Bidichan
 /// Wraps a gomobile `MobileClient` (the embedded bidichan connect-side daemon).
 final class GoBridge {
     private let client: MobileClient
+    private let logger = GoLogger()
 
     init() {
         // MobileNewClient wraps a Go pointer and never returns nil in practice.
         client = MobileNewClient()!
+        client.setLogger(logger)   // must be before start()
     }
 
     /// Starts the peer connection, blocking until the peer is up or the attempt

@@ -18,11 +18,25 @@ final class AppModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        // ProfileStore is a nested ObservableObject; @Published var store only
+        // fires on reassignment, so forward its changes to our own observers or
+        // the list won't refresh until relaunch.
+        store.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         tunnel.$status
             .receive(on: RunLoop.main)
             .sink { [weak self] s in
-                self?.status = s
-                if s == .connected { self?.startPolling() } else { self?.stopPolling() }
+                guard let self else { return }
+                self.status = s
+                if s == .connected { self.startPolling() } else { self.stopPolling() }
+                // On failure/drop the extension records why (NEVPNManager hides
+                // the provider's Error); surface it once.
+                if s == .disconnected || s == .invalid, let err = AppGroup.lastError() {
+                    self.errorMessage = err
+                    AppGroup.setLastError(nil)
+                }
             }
             .store(in: &cancellables)
     }
@@ -52,6 +66,7 @@ final class AppModel: ObservableObject {
             errorMessage = "Set a PSK for this profile first."
             return
         }
+        AppGroup.setLastError(nil)   // clear any stale failure from a prior attempt
         do {
             try await tunnel.install(profile: profile)
             try tunnel.start()

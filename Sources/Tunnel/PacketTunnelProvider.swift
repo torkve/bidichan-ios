@@ -15,9 +15,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func startTunnel(options: [String: NSObject]?,
                               completionHandler: @escaping (Error?) -> Void) {
+        AppLog.log("startTunnel: begin")
         guard let proto = protocolConfiguration as? NETunnelProviderProtocol,
               let conf = proto.providerConfiguration else {
-            completionHandler(providerError("missing provider configuration"))
+            fail("missing provider configuration", completionHandler)
             return
         }
 
@@ -35,10 +36,17 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let memMB = int(conf, K.memoryLimitMB, default: 40)
         let profileID = string(conf, K.profileID)
 
+        AppLog.log("config: addr=\(addr) host=\(hostname) " +
+                   "path=\(path.isEmpty ? "(psk-derived)" : path) noTLSBinding=\(noTLSBinding) " +
+                   "fp=\(fingerprint) tun=\(enableTUN) cidr=\(cidr) mtu=\(mtu) full=\(fullTunnel) " +
+                   "ca=\(caPEM.isEmpty ? "no" : "yes")")
+
         guard let psk = Keychain.get(account: "psk-\(profileID)"), !psk.isEmpty else {
-            completionHandler(providerError("PSK not found in keychain for this profile"))
+            fail("PSK not found in keychain (profile id=\(profileID)) — app/extension keychain sharing?",
+                 completionHandler)
             return
         }
+        AppLog.log("psk: loaded (\(psk.count) hex chars)")
 
         let flowBridge = PacketFlowBridge(flow: packetFlow)
         self.flowBridge = flowBridge
@@ -47,41 +55,55 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // Start blocks until the peer is up; run it off the provider's thread.
         DispatchQueue.global(qos: .userInitiated).async {
+            AppLog.log("go start: dialing \(addr) …")
             do {
                 try bridge.start(addr: addr, hostname: hostname, pskHex: psk, path: path,
                                  noTLSBinding: noTLSBinding, caCertPEM: Data(caPEM.utf8),
                                  fingerprint: fingerprint, memoryLimitMB: memMB, flow: flowBridge)
             } catch {
-                completionHandler(error)
+                self.fail("go start: \(error.localizedDescription)", completionHandler)
                 return
             }
+            AppLog.log("go start: peer up")
 
             let server = hostname.isEmpty ? host(fromAddr: addr) : hostname
             self.applyTunnelSettings(cidr: cidr, mtu: mtu, fullTunnel: enableTUN && fullTunnel,
                                      server: server) { settingsErr in
                 if let settingsErr {
-                    completionHandler(settingsErr)
+                    self.fail("network settings: \(settingsErr.localizedDescription)", completionHandler)
                     return
                 }
+                AppLog.log("network settings: applied")
                 if enableTUN {
                     // packetFlow is live now; open the tun channel so the Go
                     // factory wires our PacketFlowBridge in.
                     do {
                         let json = Control.openTUN(.init(cidr: cidr, mtu: mtu))
                         try ControlDecode.open(try bridge.control(json))
+                        AppLog.log("tun channel: opened")
                     } catch {
-                        completionHandler(error)
+                        self.fail("open tun: \(error.localizedDescription)", completionHandler)
                         return
                     }
                 }
+                AppGroup.setLastError(nil)
+                AppLog.log("startTunnel: connected")
                 self.startWaitLoop()
                 completionHandler(nil)
             }
         }
     }
 
+    /// Logs the reason, records it as the shared last-error, and reports failure.
+    private func fail(_ message: String, _ completion: @escaping (Error?) -> Void) {
+        AppLog.log("startTunnel FAILED: \(message)")
+        AppGroup.setLastError(message)
+        completion(providerError(message))
+    }
+
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
+        AppLog.log("stopTunnel: reason=\(reason.rawValue)")
         shellsLock.lock()
         shells.values.forEach { $0.close() }
         shells.removeAll()
@@ -99,6 +121,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self, let bridge = self.bridge else { return }
             let reason = bridge.waitUntilDone()
+            AppLog.log("session ended: \(reason ?? "clean shutdown")")
+            if let reason { AppGroup.setLastError(reason) }
             self.cancelTunnelWithError(reason.map { self.providerError($0) })
         }
     }

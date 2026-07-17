@@ -4,6 +4,7 @@ import BidichanKit
 struct ProfileListView: View {
     @EnvironmentObject var model: AppModel
     @State private var editing: Profile?
+    @State private var showLogs = false
 
     var body: some View {
         List {
@@ -22,8 +23,11 @@ struct ProfileListView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .swipeActions {
+                .swipeActions(edge: .leading) {
                     Button("Edit") { editing = profile }.tint(.blue)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button("Delete", role: .destructive) { model.store.delete(profile) }
                 }
             }
             .onDelete { offsets in
@@ -33,7 +37,13 @@ struct ProfileListView: View {
         .navigationTitle("bidichan")
         .navigationDestination(for: Profile.self) { ConnectionView(profile: $0) }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .topBarLeading) { EditButton() }
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showLogs = true
+                } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                }
                 Button {
                     editing = Profile()
                 } label: {
@@ -44,6 +54,11 @@ struct ProfileListView: View {
         .sheet(item: $editing) { profile in
             NavigationStack {
                 ProfileEditView(profile: profile)
+            }
+        }
+        .sheet(isPresented: $showLogs) {
+            NavigationStack {
+                LogView()
             }
         }
     }

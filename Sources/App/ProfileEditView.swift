@@ -16,16 +16,23 @@ struct ProfileEditView: View {
         Form {
             Section("General") {
                 TextField("Name", text: $profile.name)
+                    .textContentType(.name)
                 TextField("Server (host:port)", text: $profile.serverAddress)
-                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                TextField("Hostname / SNI", text: $profile.hostname)
+                    .textContentType(.URL).keyboardType(.URL)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                TextField("WebSocket path (optional)", text: $profile.path)
+                TextField("Hostname / SNI", text: $profile.hostname)
+                    .textContentType(.URL)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                // Explicit .URL content type keeps iOS AutoFill from mis-flagging
+                // this field as a password (which blocks third-party keyboards).
+                TextField("WebSocket path (e.g. /ws)", text: $profile.path)
+                    .textContentType(.URL)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
             }
 
             Section("Authentication") {
                 SecureField("Pre-shared key (hex)", text: $psk)
+                    .textContentType(.password)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Toggle("Server behind TLS proxy", isOn: $profile.noTLSBinding)
                 Picker("TLS fingerprint", selection: $profile.fingerprint) {
