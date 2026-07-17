@@ -91,7 +91,9 @@ platform :ios do
     # write/revoke, so clear the flag and force readonly off.
     ENV.delete("MATCH_READONLY")
     key = asc_api_key
-    %w[development distribution].each do |t|
+    # match_nuke uses match profile types (not cert classes); appstore/adhoc both
+    # cover the shared distribution certificate.
+    %w[development appstore adhoc].each do |t|
       match_nuke(type: t, api_key: key, skip_confirmation: true, readonly: false)
     end
   end
