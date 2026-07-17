@@ -10,7 +10,7 @@ import Bidichan
 /// delivers packets asynchronously in batches, so we continuously read batches
 /// into a queue and hand them out one at a time, blocking `readPacket()` when
 /// the queue is empty. This is the critical correctness seam of the port.
-final class PacketFlowBridge: NSObject, MobilePacketFlow {
+final class PacketFlowBridge: NSObject, MobilePacketFlowProtocol {
     private let flow: NEPacketTunnelFlow
     private let cond = NSCondition()
     private var queue: [Data] = []

@@ -2,22 +2,20 @@ import Foundation
 import Bidichan
 
 // GoBridge is the ONLY place that touches the gomobile-generated `Mobile*` API.
-// If the generated symbol names differ once `Bidichan.xcframework` is built by
-// CI (verify against the generated module interface / `Bidichan-Swift.h`),
-// adjust them here only.
-//
-// gomobile naming rules (package `mobile`, prefix `Mobile`, first letter of
-// members lower-cased): `func NewClient()` -> `MobileNewClient()`, type
-// `Client` -> `MobileClient`, `Config.PSKHex` -> `config.pSKHex`,
-// `Config.CACertPEM` -> `config.cACertPEM`, and `(T, error)` returns map to
-// throwing Swift methods.
+// Names/signatures below are matched to the generated Mobile.objc.h:
+//   - constructors return optionals (MobileNewClient/MobileNewConfig)
+//   - the Swift protocol for the PacketFlow interface is MobilePacketFlowProtocol
+//     (the bare MobilePacketFlow is gomobile's own class)
+//   - BOOL/nullable-return methods bridge to Swift `throws`; `control` returns a
+//     nonnull String so it keeps an explicit `error:` pointer instead.
 
 /// Wraps a gomobile `MobileClient` (the embedded bidichan connect-side daemon).
 final class GoBridge {
     private let client: MobileClient
 
     init() {
-        client = MobileNewClient()
+        // MobileNewClient wraps a Go pointer and never returns nil in practice.
+        client = MobileNewClient()!
     }
 
     /// Starts the peer connection, blocking until the peer is up or the attempt
@@ -31,13 +29,16 @@ final class GoBridge {
                fingerprint: String,
                memoryLimitMB: Int,
                flow: PacketFlowBridge) throws {
-        let cfg = MobileNewConfig()
+        guard let cfg = MobileNewConfig() else {
+            throw NSError(domain: "torkve.bidichan", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "failed to create config"])
+        }
         cfg.addr = addr
         cfg.hostname = hostname
-        cfg.pSKHex = pskHex            // Go: Config.PSKHex
+        cfg.pskHex = pskHex
         cfg.path = path
-        cfg.noTLSBinding = noTLSBinding // Go: Config.NoTLSBinding
-        cfg.cACertPEM = caCertPEM       // Go: Config.CACertPEM
+        cfg.noTLSBinding = noTLSBinding
+        cfg.caCertPEM = caCertPEM
         cfg.fingerprint = fingerprint
         cfg.memoryLimitMB = memoryLimitMB
         try client.start(cfg, flow: flow)
@@ -45,13 +46,15 @@ final class GoBridge {
 
     /// Forwards a bidichan control request (JSON) and returns the JSON response.
     func control(_ json: String) throws -> String {
-        try client.control(json)
+        var err: NSError?
+        let result = client.control(json, error: &err)
+        if let err { throw err }
+        return result
     }
 
     /// Opens an interactive shell channel and returns a session handle.
     func openShell(term: String, rows: Int, cols: Int) throws -> GoShell {
-        let session = try client.openShell(term, rows: rows, cols: cols)
-        return GoShell(session: session)
+        GoShell(session: try client.openShell(term, rows: rows, cols: cols))
     }
 
     /// Blocks until the session ends; returns the reason (nil = clean shutdown).
