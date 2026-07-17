@@ -56,6 +56,7 @@ targets:
       properties:
         CFBundleDisplayName: bidichan
         UILaunchScreen: {}
+        UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -78,6 +79,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan
         PROVISIONING_PROFILE_SPECIFIER: $(PP_APP)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"   # override XcodeGen's universal preset
         # Point at the committed entitlements file directly (XcodeGen's
         # entitlements: block was not applying it, so the networkextension
         # entitlement was missing from the signed app).
