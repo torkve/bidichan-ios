@@ -17,7 +17,10 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
     // TUN / system-tunnel settings.
     public var enableTUN: Bool
     public var tunCIDR: String          // this device's IPv4 address, e.g. "10.42.0.2/24"
-    public var tunCIDR6: String         // this device's IPv6 address (ULA); empty = no IPv6
+    // Default on the property (not just the init) so existing saved profiles that
+    // predate this field still decode (synthesized Decodable uses it for the
+    // missing key) instead of failing and dropping the profile list.
+    public var tunCIDR6: String = "fd00:bd::2/64"   // device IPv6 (ULA); empty = no IPv6
     public var tunMTU: Int
     public var fullTunnel: Bool         // route all traffic vs just the tun subnet
     public var memoryLimitMB: Int       // soft Go heap cap inside the NE
@@ -46,6 +49,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
         self.caCertPEM = caCertPEM
         self.enableTUN = enableTUN
         self.tunCIDR = tunCIDR
+        self.tunCIDR6 = tunCIDR6
         self.tunMTU = tunMTU
         self.fullTunnel = fullTunnel
         self.memoryLimitMB = memoryLimitMB
