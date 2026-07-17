@@ -62,6 +62,21 @@ public struct ChannelConfig: Codable, Identifiable, Equatable, Hashable {
         self.routeSystem = routeSystem
     }
 
+    /// Tolerant decoder, for the same reason as `Profile`'s: synthesized
+    /// `Decodable` ignores property defaults, so decoding every field with
+    /// `decodeIfPresent ?? default` keeps a saved profile's channels from being
+    /// dropped when we later add a field here. `id` is the only required key.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .http
+        allInterfaces = try c.decodeIfPresent(Bool.self, forKey: .allInterfaces) ?? false
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? kind.defaultPort
+        target = try c.decodeIfPresent(String.self, forKey: .target) ?? "127.0.0.1:80"
+        routeSystem = try c.decodeIfPresent(Bool.self, forKey: .routeSystem) ?? true
+    }
+
     /// The bind host implied by `allInterfaces`.
     public var host: String { allInterfaces ? "0.0.0.0" : "127.0.0.1" }
 

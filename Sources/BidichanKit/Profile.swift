@@ -17,17 +17,13 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
     // TUN / system-tunnel settings.
     public var enableTUN: Bool
     public var tunCIDR: String          // this device's IPv4 address, e.g. "10.42.0.2/24"
-    // Default on the property (not just the init) so existing saved profiles that
-    // predate this field still decode (synthesized Decodable uses it for the
-    // missing key) instead of failing and dropping the profile list.
-    public var tunCIDR6: String = "fd00:bd::2/64"   // device IPv6 (ULA); empty = no IPv6
+    public var tunCIDR6: String         // device IPv6 (ULA); empty = no IPv6
     public var tunMTU: Int
     public var fullTunnel: Bool         // route all traffic vs just the tun subnet
     public var memoryLimitMB: Int       // soft Go heap cap inside the NE
 
-    // Channels opened automatically once this profile connects. Property-level
-    // default keeps older saved profiles (which lack the key) decodable.
-    public var channels: [ChannelConfig] = []
+    // Channels opened automatically once this profile connects.
+    public var channels: [ChannelConfig]
 
     public init(id: UUID = UUID(),
                 name: String = "New profile",
@@ -61,6 +57,31 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
         self.channels = channels
     }
 
+    /// Tolerant decoder. Swift's *synthesized* `Decodable` calls the throwing
+    /// `decode(_:forKey:)` for every non-optional property and ignores property
+    /// default values, so a saved profile that predates any field we later add
+    /// would fail to decode — and `ProfileStore` would drop the whole list. We
+    /// therefore decode every field with `decodeIfPresent ?? default`, so adding
+    /// a field is always backward-compatible. `id` is the only required key.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "New profile"
+        serverAddress = try c.decodeIfPresent(String.self, forKey: .serverAddress) ?? ""
+        hostname = try c.decodeIfPresent(String.self, forKey: .hostname) ?? ""
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        noTLSBinding = try c.decodeIfPresent(Bool.self, forKey: .noTLSBinding) ?? true
+        fingerprint = try c.decodeIfPresent(String.self, forKey: .fingerprint) ?? "ios"
+        caCertPEM = try c.decodeIfPresent(String.self, forKey: .caCertPEM) ?? ""
+        enableTUN = try c.decodeIfPresent(Bool.self, forKey: .enableTUN) ?? true
+        tunCIDR = try c.decodeIfPresent(String.self, forKey: .tunCIDR) ?? "10.42.0.2/24"
+        tunCIDR6 = try c.decodeIfPresent(String.self, forKey: .tunCIDR6) ?? "fd00:bd::2/64"
+        tunMTU = try c.decodeIfPresent(Int.self, forKey: .tunMTU) ?? 1400
+        fullTunnel = try c.decodeIfPresent(Bool.self, forKey: .fullTunnel) ?? false
+        memoryLimitMB = try c.decodeIfPresent(Int.self, forKey: .memoryLimitMB) ?? 40
+        channels = try c.decodeIfPresent([ChannelConfig].self, forKey: .channels) ?? []
+    }
+
     /// Keychain account under which this profile's PSK is stored.
     public var pskAccount: String { "psk-\(id.uuidString)" }
 }
@@ -76,12 +97,27 @@ public final class ProfileStore: ObservableObject {
     }
 
     public func load() {
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode([Profile].self, from: data) else {
+        guard let data = try? Data(contentsOf: url) else {
             profiles = []
             return
         }
-        profiles = decoded
+        let dec = JSONDecoder()
+        if let decoded = try? dec.decode([Profile].self, from: data) {
+            profiles = decoded
+            return
+        }
+        // The list as a whole didn't decode (corruption — schema drift is handled
+        // by Profile's tolerant decoder). Keep the original bytes for recovery,
+        // then salvage the entries that still parse instead of dropping them all.
+        try? data.write(to: url.appendingPathExtension("bak"), options: .atomic)
+        profiles = (try? dec.decode([FailableProfile].self, from: data))?.compactMap(\.value) ?? []
+    }
+
+    /// Decodes a profile without failing the surrounding array: a single bad
+    /// entry becomes nil rather than aborting the whole `[Profile]` decode.
+    private struct FailableProfile: Decodable {
+        let value: Profile?
+        init(from decoder: Decoder) throws { value = try? Profile(from: decoder) }
     }
 
     private func persist() {
