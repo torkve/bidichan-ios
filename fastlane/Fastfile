@@ -27,10 +27,6 @@ def write_signing_xcconfig(profile_type)
     PP_APP = match #{profile_type} #{APP_ID}
     PP_TUNNEL = match #{profile_type} #{TUNNEL_ID}
     CURRENT_PROJECT_VERSION = #{build_number}
-    // Both App Store and Ad Hoc archives sign with the Apple Distribution cert;
-    // without this, manual signing defaults to "iOS Development" and fails.
-    CODE_SIGN_IDENTITY = Apple Distribution
-    CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
   CFG
 end
 
@@ -47,10 +43,6 @@ def gym_build(export_method:, profile_type:)
     output_directory: File.join(ROOT, "build"),
     output_name: "bidichan.ipa",
     clean: true,
-    # Force the distribution identity on the xcodebuild command line — it beats
-    # the target-level default XcodeGen writes, which otherwise makes the archive
-    # demand an "iOS Development" cert that isn't installed.
-    xcargs: 'CODE_SIGN_IDENTITY="Apple Distribution" CODE_SIGN_STYLE=Manual',
     export_options: {
       signingStyle: "manual",
       provisioningProfiles: {

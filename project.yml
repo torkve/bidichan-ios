@@ -70,6 +70,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan
         PROVISIONING_PROFILE_SPECIFIER: $(PP_APP)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Set here (not globally) so it beats XcodeGen's preset default without
+        # leaking manual-signing onto SwiftPM deps (e.g. SwiftTerm).
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Distribution"
 
   # ------------------------------------------------- packet tunnel extension
   BidichanTunnel:
@@ -95,3 +99,5 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan.tunnel
         PROVISIONING_PROFILE_SPECIFIER: $(PP_TUNNEL)
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Distribution"
