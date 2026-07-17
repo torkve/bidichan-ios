@@ -2,8 +2,8 @@
 
 A native iOS client for [bidichan](https://github.com/torkve/bidichan) — a
 point-to-point encrypted tunnel disguised as HTTPS/WebSocket. The app hosts the
-bidichan connect-side peer inside a **Packet Tunnel Provider** (a system VPN,
-mirroring the desktop's TUN device) and drives all channel kinds: TUN VPN,
+bidichan connect-side peer inside a **Packet Tunnel Provider** (a system tunnel,
+mirroring the desktop's TUN device) and drives all channel kinds: TUN,
 SOCKS5/HTTP proxy, TCP port-forward, and an interactive shell.
 
 ## Architecture

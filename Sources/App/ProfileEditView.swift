@@ -42,8 +42,8 @@ struct ProfileEditView: View {
                 }
             }
 
-            Section("System VPN (TUN)") {
-                Toggle("Enable VPN tunnel", isOn: $profile.enableTUN)
+            Section("System tunnel (TUN)") {
+                Toggle("Enable tunnel", isOn: $profile.enableTUN)
                 TextField("Device CIDR (e.g. 10.42.0.2/24)", text: $profile.tunCIDR)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Stepper("MTU: \(profile.tunMTU)", value: $profile.tunMTU, in: 1000...1500, step: 20)

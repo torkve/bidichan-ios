@@ -78,11 +78,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 AppLog.log("network settings: applied")
                 if enableTUN {
                     // packetFlow is live now; open the tun channel so the Go
-                    // factory wires our PacketFlowBridge in.
+                    // factory wires our PacketFlowBridge in. Give the peer a
+                    // DIFFERENT address in the subnet (the gateway) than our own
+                    // device address — otherwise both ends share one address and
+                    // return traffic is delivered to the peer locally.
+                    let gwCIDR = Self.gatewayCIDR(fromDevice: cidr)
                     do {
-                        let json = Control.openTUN(.init(cidr: cidr, mtu: mtu))
+                        let json = Control.openTUN(.init(cidr: gwCIDR, mtu: mtu))
                         try ControlDecode.open(try bridge.control(json))
-                        AppLog.log("tun channel: opened")
+                        AppLog.log("tun channel: opened (device \(cidr), gateway \(gwCIDR))")
                     } catch {
                         self.fail("open tun: \(error.localizedDescription)", completionHandler)
                         return
@@ -275,11 +279,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 v4.includedRoutes = fullTunnel
                     ? [NEIPv4Route.default()]
                     : [NEIPv4Route(destinationAddress: info.network, subnetMask: info.subnetMask)]
+                // Keep the peer connection off the tunnel it provides: exclude the
+                // (runtime-resolved) server address so its WebSocket can't loop.
+                if fullTunnel, !server.isEmpty, !server.contains(":") {
+                    v4.excludedRoutes = [NEIPv4Route(destinationAddress: server,
+                                                     subnetMask: "255.255.255.255")]
+                }
                 settings.ipv4Settings = v4
             }
         }
         if fullTunnel {
-            settings.dnsSettings = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+            let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+            dns.matchDomains = [""]   // use the tunnel resolver for all lookups
+            settings.dnsSettings = dns
         }
         setTunnelNetworkSettings(settings, completionHandler: completion)
     }
@@ -316,6 +328,26 @@ extension PacketTunnelProvider {
         }
         let h = hostname.isEmpty ? Self.stripPort(addr) : hostname
         return Self.resolveIP(h) ?? h
+    }
+
+    /// A CIDR in the same IPv4 subnet as `deviceCIDR` but a different host, used
+    /// for the peer's tun so the two ends don't share one address. Picks the
+    /// first host (network+1), or the second if the device is already the first.
+    /// Falls back to the input if it can't parse a v4 CIDR.
+    static func gatewayCIDR(fromDevice deviceCIDR: String) -> String {
+        let parts = deviceCIDR.split(separator: "/")
+        guard parts.count == 2, let prefix = Int(parts[1]), prefix >= 0, prefix <= 32 else {
+            return deviceCIDR
+        }
+        let octets = parts[0].split(separator: ".").compactMap { UInt8($0) }
+        guard octets.count == 4 else { return deviceCIDR }
+        let addr = octets.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        let mask: UInt32 = prefix == 0 ? 0 : ~UInt32(0) << (32 - prefix)
+        let network = addr & mask
+        var gw = network | 1
+        if gw == addr { gw = network | 2 }
+        let s = "\((gw >> 24) & 0xff).\((gw >> 16) & 0xff).\((gw >> 8) & 0xff).\(gw & 0xff)"
+        return "\(s)/\(prefix)"
     }
 
     /// "1.2.3.4:443" -> "1.2.3.4"; "[::1]:443" -> "::1"; "host" -> "host".

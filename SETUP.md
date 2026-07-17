@@ -123,8 +123,9 @@ assigned to both bundle IDs. Fix that and re-run.
 (internal testers skip Beta App Review; allow a few minutes for processing).
 
 **Ad-hoc OTA:** open the GitHub Release created by the run and tap **Install
-bidichan** on the registered iPhone. On first launch, trust the certificate in
-Settings ▸ General ▸ VPN & Device Management. This path has no processing wait.
+bidichan** on the registered iPhone. On first launch, trust the developer
+certificate in Settings ▸ General ▸ Device Management. This path has no
+processing wait.
 
 ## How it fits together
 

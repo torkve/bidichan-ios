@@ -3,7 +3,7 @@ import Combine
 import NetworkExtension
 import BidichanKit
 
-/// App-wide view model: owns the profile store and tunnel manager, tracks VPN
+/// App-wide view model: owns the profile store and tunnel manager, tracks tunnel
 /// status, and drives channel operations via the extension.
 @MainActor
 final class AppModel: ObservableObject {

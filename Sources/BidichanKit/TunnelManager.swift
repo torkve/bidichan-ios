@@ -3,7 +3,7 @@ import Combine
 import NetworkExtension
 
 /// Owns the `NETunnelProviderManager` and drives the tunnel from the app:
-/// installs/updates the VPN configuration from a `Profile`, starts/stops it,
+/// installs/updates the tunnel configuration from a `Profile`, starts/stops it,
 /// tracks status, and relays control requests to the extension.
 @MainActor
 public final class TunnelManager: ObservableObject {
@@ -21,7 +21,7 @@ public final class TunnelManager: ObservableObject {
         case emptyResponse
         public var errorDescription: String? {
             switch self {
-            case .noManager: return "VPN is not configured yet"
+            case .noManager: return "the tunnel is not configured yet"
             case .notConnected: return "the tunnel is not running"
             case .emptyResponse: return "the tunnel returned no response"
             }
@@ -48,7 +48,7 @@ public final class TunnelManager: ObservableObject {
         }
     }
 
-    /// Writes the VPN configuration for `profile` into preferences.
+    /// Writes the tunnel configuration for `profile` into preferences.
     public func install(profile: Profile) async throws {
         let m = manager ?? NETunnelProviderManager()
         let proto = NETunnelProviderProtocol()

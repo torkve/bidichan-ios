@@ -14,7 +14,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
     public var fingerprint: String      // "ios" | "safari" | "chrome"
     public var caCertPEM: String        // optional PEM to pin; empty = system roots
 
-    // TUN / system-VPN settings.
+    // TUN / system-tunnel settings.
     public var enableTUN: Bool
     public var tunCIDR: String          // this device's address, e.g. "10.42.0.2/24"
     public var tunMTU: Int
