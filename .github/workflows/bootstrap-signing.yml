@@ -25,6 +25,8 @@ jobs:
       # Only needed if run_app_groups is true and produce falls back to Apple ID:
       FASTLANE_APPLE_ID: ${{ secrets.FASTLANE_APPLE_ID }}
       FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APP_SPECIFIC_PASSWORD }}
+      # Job-level so it's usable in the step `if:` (the secrets context is not).
+      DEVICE_UDIDS: ${{ secrets.DEVICE_UDIDS }}
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -38,9 +40,7 @@ jobs:
       # devices.txt is not in the repo (public); build it from the secret so the
       # UDID never lands in git. Secret format: one "UDID Name" per line.
       - name: Materialize devices.txt from secret
-        if: ${{ secrets.DEVICE_UDIDS != '' }}
-        env:
-          DEVICE_UDIDS: ${{ secrets.DEVICE_UDIDS }}
+        if: ${{ env.DEVICE_UDIDS != '' }}
         run: |
           {
             printf 'Device ID\tDevice Name\n'
