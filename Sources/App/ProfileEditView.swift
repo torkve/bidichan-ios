@@ -44,7 +44,11 @@ struct ProfileEditView: View {
 
             Section("System tunnel (TUN)") {
                 Toggle("Enable tunnel", isOn: $profile.enableTUN)
-                TextField("Device CIDR (e.g. 10.42.0.2/24)", text: $profile.tunCIDR)
+                TextField("Device IPv4 (e.g. 10.42.0.2/24)", text: $profile.tunCIDR)
+                    .textContentType(.URL)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("Device IPv6 (optional, e.g. fd00:bd::2/64)", text: $profile.tunCIDR6)
+                    .textContentType(.URL)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Stepper("MTU: \(profile.tunMTU)", value: $profile.tunMTU, in: 1000...1500, step: 20)
                 Toggle("Route all traffic (full tunnel)", isOn: $profile.fullTunnel)

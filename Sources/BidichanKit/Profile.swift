@@ -16,7 +16,8 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
 
     // TUN / system-tunnel settings.
     public var enableTUN: Bool
-    public var tunCIDR: String          // this device's address, e.g. "10.42.0.2/24"
+    public var tunCIDR: String          // this device's IPv4 address, e.g. "10.42.0.2/24"
+    public var tunCIDR6: String         // this device's IPv6 address (ULA); empty = no IPv6
     public var tunMTU: Int
     public var fullTunnel: Bool         // route all traffic vs just the tun subnet
     public var memoryLimitMB: Int       // soft Go heap cap inside the NE
@@ -31,6 +32,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
                 caCertPEM: String = "",
                 enableTUN: Bool = true,
                 tunCIDR: String = "10.42.0.2/24",
+                tunCIDR6: String = "fd00:bd::2/64",
                 tunMTU: Int = 1400,
                 fullTunnel: Bool = false,
                 memoryLimitMB: Int = 40) {

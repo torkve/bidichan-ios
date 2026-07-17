@@ -21,6 +21,7 @@ public enum BidichanConstants {
         public static let caCertPEM = "caCertPEM"
         public static let enableTUN = "enableTUN"
         public static let tunCIDR = "tunCIDR"
+        public static let tunCIDR6 = "tunCIDR6"
         public static let tunMTU = "tunMTU"
         public static let fullTunnel = "fullTunnel"
         public static let memoryLimitMB = "memoryLimitMB"

@@ -64,6 +64,7 @@ public final class TunnelManager: ObservableObject {
             BidichanConstants.Key.caCertPEM: profile.caCertPEM,
             BidichanConstants.Key.enableTUN: profile.enableTUN,
             BidichanConstants.Key.tunCIDR: profile.tunCIDR,
+            BidichanConstants.Key.tunCIDR6: profile.tunCIDR6,
             BidichanConstants.Key.tunMTU: profile.tunMTU,
             BidichanConstants.Key.fullTunnel: profile.fullTunnel,
             BidichanConstants.Key.memoryLimitMB: profile.memoryLimitMB,

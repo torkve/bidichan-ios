@@ -31,6 +31,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let caPEM = string(conf, K.caCertPEM)
         let enableTUN = bool(conf, K.enableTUN, default: true)
         let cidr = string(conf, K.tunCIDR, default: "10.42.0.2/24")
+        let cidr6 = string(conf, K.tunCIDR6)
         let mtu = int(conf, K.tunMTU, default: 1400)
         let fullTunnel = bool(conf, K.fullTunnel, default: false)
         let memMB = int(conf, K.memoryLimitMB, default: 40)
@@ -69,7 +70,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             // tunnelRemoteAddress must be a numeric IP, not a hostname.
             let serverIP = self.tunnelRemoteIP(bridge: bridge, addr: addr, hostname: hostname)
             AppLog.log("tunnel remote address: \(serverIP)")
-            self.applyTunnelSettings(cidr: cidr, mtu: mtu, fullTunnel: enableTUN && fullTunnel,
+            self.applyTunnelSettings(cidr: cidr, cidr6: cidr6, mtu: mtu,
+                                     fullTunnel: enableTUN && fullTunnel,
                                      server: serverIP) { settingsErr in
                 if let settingsErr {
                     self.fail("network settings: \(settingsErr.localizedDescription)", completionHandler)
@@ -83,10 +85,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     // device address — otherwise both ends share one address and
                     // return traffic is delivered to the peer locally.
                     let gwCIDR = Self.gatewayCIDR(fromDevice: cidr)
+                    let gwCIDR6 = cidr6.isEmpty ? nil : Self.gatewayCIDR6(fromDevice: cidr6)
                     do {
-                        let json = Control.openTUN(.init(cidr: gwCIDR, mtu: mtu))
+                        let json = Control.openTUN(.init(cidr: gwCIDR, cidr6: gwCIDR6, mtu: mtu))
                         try ControlDecode.open(try bridge.control(json))
-                        AppLog.log("tun channel: opened (device \(cidr), gateway \(gwCIDR))")
+                        AppLog.log("tun channel: opened (device \(cidr)/\(cidr6.isEmpty ? "-" : cidr6), " +
+                                   "gateway \(gwCIDR)/\(gwCIDR6 ?? "-"))")
                     } catch {
                         self.fail("open tun: \(error.localizedDescription)", completionHandler)
                         return
@@ -258,38 +262,49 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - Network settings
 
-    private func applyTunnelSettings(cidr: String, mtu: Int, fullTunnel: Bool,
+    private func applyTunnelSettings(cidr: String, cidr6: String, mtu: Int, fullTunnel: Bool,
                                      server: String,
                                      completion: @escaping (Error?) -> Void) {
         let settings = NEPacketTunnelNetworkSettings(
             tunnelRemoteAddress: server.isEmpty ? "127.0.0.1" : server)
         settings.mtu = NSNumber(value: mtu)
+        // Keep the peer connection off the tunnel it provides: exclude the
+        // (runtime-resolved) server address in its own family so the WebSocket
+        // can't loop.
+        let serverIsV6 = server.contains(":")
 
-        if let info = CIDRInfo(cidr) {
-            if info.isV6 {
-                let v6 = NEIPv6Settings(addresses: [info.address],
-                                        networkPrefixLengths: [NSNumber(value: info.prefix)])
-                v6.includedRoutes = fullTunnel
-                    ? [NEIPv6Route.default()]
-                    : [NEIPv6Route(destinationAddress: info.address,
-                                   networkPrefixLength: NSNumber(value: info.prefix))]
-                settings.ipv6Settings = v6
-            } else {
-                let v4 = NEIPv4Settings(addresses: [info.address], subnetMasks: [info.subnetMask])
-                v4.includedRoutes = fullTunnel
-                    ? [NEIPv4Route.default()]
-                    : [NEIPv4Route(destinationAddress: info.network, subnetMask: info.subnetMask)]
-                // Keep the peer connection off the tunnel it provides: exclude the
-                // (runtime-resolved) server address so its WebSocket can't loop.
-                if fullTunnel, !server.isEmpty, !server.contains(":") {
-                    v4.excludedRoutes = [NEIPv4Route(destinationAddress: server,
-                                                     subnetMask: "255.255.255.255")]
-                }
-                settings.ipv4Settings = v4
+        // IPv4
+        if let info = CIDRInfo(cidr), !info.isV6 {
+            let v4 = NEIPv4Settings(addresses: [info.address], subnetMasks: [info.subnetMask])
+            v4.includedRoutes = fullTunnel
+                ? [NEIPv4Route.default()]
+                : [NEIPv4Route(destinationAddress: info.network, subnetMask: info.subnetMask)]
+            if fullTunnel, !server.isEmpty, !serverIsV6 {
+                v4.excludedRoutes = [NEIPv4Route(destinationAddress: server,
+                                                 subnetMask: "255.255.255.255")]
             }
+            settings.ipv4Settings = v4
         }
+
+        // IPv6 (dual-stack)
+        if !cidr6.isEmpty, let info6 = CIDRInfo(cidr6), info6.isV6 {
+            let v6 = NEIPv6Settings(addresses: [info6.address],
+                                    networkPrefixLengths: [NSNumber(value: info6.prefix)])
+            v6.includedRoutes = fullTunnel
+                ? [NEIPv6Route.default()]
+                : [NEIPv6Route(destinationAddress: info6.address,
+                               networkPrefixLength: NSNumber(value: info6.prefix))]
+            if fullTunnel, !server.isEmpty, serverIsV6 {
+                v6.excludedRoutes = [NEIPv6Route(destinationAddress: server,
+                                                 networkPrefixLength: 128)]
+            }
+            settings.ipv6Settings = v6
+        }
+
         if fullTunnel {
-            let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+            var servers = ["1.1.1.1", "8.8.8.8"]
+            if !cidr6.isEmpty { servers += ["2606:4700:4700::1111", "2001:4860:4860::8888"] }
+            let dns = NEDNSSettings(servers: servers)
             dns.matchDomains = [""]   // use the tunnel resolver for all lookups
             settings.dnsSettings = dns
         }
@@ -348,6 +363,19 @@ extension PacketTunnelProvider {
         if gw == addr { gw = network | 2 }
         let s = "\((gw >> 24) & 0xff).\((gw >> 16) & 0xff).\((gw >> 8) & 0xff).\(gw & 0xff)"
         return "\(s)/\(prefix)"
+    }
+
+    /// IPv6 analogue of gatewayCIDR: same subnet, low-order byte set to 1 (or 2
+    /// if the device already ends in 1). e.g. fd00:bd::2/64 -> fd00:bd::1/64.
+    static func gatewayCIDR6(fromDevice cidr: String) -> String {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2 else { return cidr }
+        var bytes = [UInt8](repeating: 0, count: 16)
+        guard inet_pton(AF_INET6, String(parts[0]), &bytes) == 1 else { return cidr }
+        bytes[15] = (bytes[15] == 1) ? 2 : 1
+        var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        guard inet_ntop(AF_INET6, &bytes, &buf, socklen_t(INET6_ADDRSTRLEN)) != nil else { return cidr }
+        return "\(String(cString: buf))/\(parts[1])"
     }
 
     /// "1.2.3.4:443" -> "1.2.3.4"; "[::1]:443" -> "::1"; "host" -> "host".

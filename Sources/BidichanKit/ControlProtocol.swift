@@ -62,12 +62,15 @@ public enum Control {
     public struct TUNArgs: Encodable {
         public var tunSide: String
         public var cidr: String
+        public var cidr6: String?
         public var mtu: Int
         public var name: String?
         public var label: String?
-        public init(tunSide: Side = .local, cidr: String, mtu: Int, name: String? = nil, label: String? = nil) {
+        public init(tunSide: Side = .local, cidr: String, cidr6: String? = nil, mtu: Int,
+                    name: String? = nil, label: String? = nil) {
             self.tunSide = tunSide.rawValue
             self.cidr = cidr
+            self.cidr6 = cidr6
             self.mtu = mtu
             self.name = name
             self.label = label
