@@ -5,6 +5,11 @@ name: bootstrap-signing
 # into the match git repo.
 on:
   workflow_dispatch:
+    inputs:
+      nuke_first:
+        description: "Revoke all existing dev/distribution certs first (fixes 'reached the maximum number of certificates')"
+        default: false
+        type: boolean
 
 jobs:
   bootstrap:
@@ -46,6 +51,10 @@ jobs:
               printf '%s\t%s\n' "$udid" "$name"
             done <<< "$DEVICE_UDIDS"
           } > fastlane/devices.txt
+
+      - name: Revoke orphaned certs (optional)
+        if: ${{ inputs.nuke_first }}
+        run: bundle exec fastlane nuke
 
       - name: Register devices + create certs & profiles
         run: bundle exec fastlane bootstrap

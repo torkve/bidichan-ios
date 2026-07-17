@@ -80,6 +80,19 @@ platform :ios do
                "capabilities + App Group).")
   end
 
+  # Revoke ALL development + distribution certificates and their match profiles.
+  # Use this to clear orphans left by failed bootstrap runs (which create a cert
+  # in the portal before dying, eventually hitting Apple's per-account cert
+  # limit). Safe on a fresh account used only for this app; run `bootstrap`
+  # afterward to mint fresh, repo-stored certs.
+  desc "Revoke all dev/distribution certs & profiles (clears orphans from failed runs)"
+  lane :nuke do
+    key = asc_api_key
+    %w[development distribution].each do |t|
+      match_nuke(type: t, api_key: key, skip_confirmation: true)
+    end
+  end
+
   # -------------------------------------------------------------- TestFlight (internal)
   desc "Build and upload to TestFlight (internal testers)"
   lane :beta do
