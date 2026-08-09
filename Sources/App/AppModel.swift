@@ -33,7 +33,8 @@ final class AppModel: ObservableObject {
             .sink { [weak self] s in
                 guard let self else { return }
                 self.status = s
-                if s == .connected {
+                switch s {
+                case .connected:
                     self.startPolling()
                     // Open the profile's default channels once, after the daemon
                     // is up. Consume the list so a later reassert->connected
@@ -43,7 +44,13 @@ final class AppModel: ObservableObject {
                         self.pendingDefaults = []
                         Task { await self.openDefaultChannels(defaults) }
                     }
-                } else {
+                case .reasserting:
+                    // The tunnel is still installed and the extension is still
+                    // there — it is riding out a network change. Keep polling
+                    // so the channel list survives the blip instead of blinking
+                    // away and coming back.
+                    self.startPolling()
+                default:
                     self.stopPolling()
                 }
                 // On failure/drop the extension records why (NEVPNManager hides
@@ -73,6 +80,11 @@ final class AppModel: ObservableObject {
     }
 
     var isBusy: Bool { status == .connecting || status == .disconnecting || status == .reasserting }
+
+    /// The tunnel is up as far as the user is concerned: either carrying
+    /// traffic, or briefly reconnecting underneath while its channels — and
+    /// the connections inside them — stay open.
+    var isLive: Bool { status == .connected || status == .reasserting }
 
     // MARK: - Connection
 
@@ -198,7 +210,7 @@ final class AppModel: ObservableObject {
     }
 
     private func startPolling() {
-        pollTask?.cancel()
+        guard pollTask == nil else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshStatus()

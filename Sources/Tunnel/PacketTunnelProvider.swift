@@ -1,12 +1,21 @@
+import Network
 import NetworkExtension
 import BidichanKit
 
 /// The Packet Tunnel Provider: hosts the embedded bidichan Go core, brings up
 /// the peer connection, applies network settings from the profile's tun CIDR,
 /// bridges packets, and relays control/shell requests from the app.
+///
+/// The tunnel is meant to outlive the network it runs on. A flap does not stop
+/// it: the Go core resumes the same session over a fresh connection, so the
+/// channels and the TCP connections inside them carry on where they left off,
+/// and all this class does is report `reasserting` while that happens. Only
+/// when a session is lost for good does it have to rebuild — reopening the tun
+/// channel and replaying the channels the app had asked for.
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private var bridge: GoBridge?
     private var flowBridge: PacketFlowBridge?
+    private var pathMonitor: NWPathMonitor?
 
     private let shellsLock = NSLock()
     private var shells: [String: GoShell] = [:]
@@ -18,6 +27,27 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
     private var tunnelConfig: TunnelConfig?
     private var systemProxy: (kind: String, host: String, port: Int)?
+
+    // Everything needed to put the tun channel back after a session is lost.
+    private struct TUNRequest {
+        var cidr: String, cidr6: String?, mtu: Int
+    }
+    private var tunRequest: TUNRequest?
+
+    /// The channel opens the app asked for, kept so they can be replayed onto a
+    /// rebuilt session. A new session starts empty, and the app cannot tell
+    /// that happened — from its side the tunnel never went down.
+    private struct OpenChannel {
+        var id: UInt64
+        var requestJSON: String
+    }
+    private let channelsLock = NSLock()
+    private var openChannels: [OpenChannel] = []
+
+    // Set between losing a session and having its channels back, so the tunnel
+    // is not reported as connected while it is still empty.
+    private let restoreLock = NSLock()
+    private var restoringSession = false
 
     // MARK: - Lifecycle
 
@@ -43,12 +73,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let mtu = int(conf, K.tunMTU, default: 1400)
         let fullTunnel = bool(conf, K.fullTunnel, default: false)
         let memMB = int(conf, K.memoryLimitMB, default: 40)
+        let resumeGrace = int(conf, K.resumeGraceSeconds, default: 90)
         let profileID = string(conf, K.profileID)
 
         AppLog.log("config: addr=\(addr) host=\(hostname) " +
                    "path=\(path.isEmpty ? "(psk-derived)" : path) noTLSBinding=\(noTLSBinding) " +
                    "fp=\(fingerprint) tun=\(enableTUN) cidr=\(cidr) mtu=\(mtu) full=\(fullTunnel) " +
-                   "ca=\(caPEM.isEmpty ? "no" : "yes")")
+                   "ca=\(caPEM.isEmpty ? "no" : "yes") resumeGrace=\(resumeGrace)s")
 
         guard let psk = Keychain.get(account: "psk-\(profileID)"), !psk.isEmpty else {
             fail("PSK not found in keychain (profile id=\(profileID)) — app/extension keychain sharing?",
@@ -61,6 +92,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         self.flowBridge = flowBridge
         let bridge = GoBridge()
         self.bridge = bridge
+        bridge.observeLink(onState: { [weak self] in self?.linkStateChanged($0) },
+                           onSession: { [weak self] in self?.sessionEstablished(reestablished: $0) })
 
         // Start blocks until the peer is up; run it off the provider's thread.
         DispatchQueue.global(qos: .userInitiated).async {
@@ -68,7 +101,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             do {
                 try bridge.start(addr: addr, hostname: hostname, pskHex: psk, path: path,
                                  noTLSBinding: noTLSBinding, caCertPEM: Data(caPEM.utf8),
-                                 fingerprint: fingerprint, memoryLimitMB: memMB, flow: flowBridge)
+                                 fingerprint: fingerprint, memoryLimitMB: memMB,
+                                 resumeGraceSeconds: resumeGrace, flow: flowBridge)
             } catch {
                 self.fail("go start: \(error.localizedDescription)", completionHandler)
                 return
@@ -94,9 +128,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     // return traffic is delivered to the peer locally.
                     let gwCIDR = Self.gatewayCIDR(fromDevice: cidr)
                     let gwCIDR6 = cidr6.isEmpty ? nil : Self.gatewayCIDR6(fromDevice: cidr6)
+                    let request = TUNRequest(cidr: gwCIDR, cidr6: gwCIDR6, mtu: mtu)
+                    self.tunRequest = request
                     do {
-                        let json = Control.openTUN(.init(cidr: gwCIDR, cidr6: gwCIDR6, mtu: mtu))
-                        try ControlDecode.open(try bridge.control(json))
+                        try self.openTUNChannel(bridge, request)
                         AppLog.log("tun channel: opened (device \(cidr)/\(cidr6.isEmpty ? "-" : cidr6), " +
                                    "gateway \(gwCIDR)/\(gwCIDR6 ?? "-"))")
                     } catch {
@@ -107,6 +142,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 AppGroup.setLastError(nil)
                 AppLog.log("startTunnel: connected")
                 self.startWaitLoop()
+                self.startPathMonitor()
                 completionHandler(nil)
             }
         }
@@ -122,6 +158,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
         AppLog.log("stopTunnel: reason=\(reason.rawValue)")
+        pathMonitor?.cancel()
+        pathMonitor = nil
         shellsLock.lock()
         shells.values.forEach { $0.close() }
         shells.removeAll()
@@ -134,14 +172,173 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler()
     }
 
-    /// Watches the Go session; when the peer drops, tears the tunnel down.
+    /// Watches the Go client. It now outlives individual sessions — it returns
+    /// only when the client has stopped for good — so reaching here means the
+    /// tunnel really is finished.
     private func startWaitLoop() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self, let bridge = self.bridge else { return }
             let reason = bridge.waitUntilDone()
-            AppLog.log("session ended: \(reason ?? "clean shutdown")")
+            AppLog.log("client stopped: \(reason ?? "clean shutdown")")
             if let reason { AppGroup.setLastError(reason) }
             self.cancelTunnelWithError(reason.map { self.providerError($0) })
+        }
+    }
+
+    // MARK: - Reconnection
+
+    /// Watches the device's network path. iOS knows the path changed long
+    /// before a socket on the old one times out, so telling the core lets it
+    /// throw the dead connection away and redial immediately.
+    private func startPathMonitor() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        // The monitor reports the current path as soon as it starts. That one
+        // describes the network we just connected over, so record it and only
+        // act on later changes — otherwise we would drop a link we just built.
+        var known: String?
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            // Only the physical interfaces matter. Our own utun device shows up
+            // here too (as .other) and would otherwise look like a path change
+            // the moment the tunnel comes up.
+            let physical = path.availableInterfaces
+                .filter { $0.type == .wifi || $0.type == .cellular || $0.type == .wiredEthernet }
+                .map(\.name)
+                .sorted()
+                .joined(separator: ",")
+            guard path.status == .satisfied, !physical.isEmpty else { return }
+            defer { known = physical }
+            guard let previous = known, previous != physical else { return }
+            AppLog.log("network path changed (\(previous) → \(physical)); redialing now")
+            self.bridge?.networkChanged()
+        }
+        monitor.start(queue: DispatchQueue.global(qos: .utility))
+        pathMonitor = monitor
+    }
+
+    /// Reports what the transport underneath the session is doing. `reasserting`
+    /// is how a Packet Tunnel Provider says "still here, just not carrying
+    /// traffic" — the tunnel stays installed and the app shows "Reconnecting…"
+    /// instead of the connection appearing to drop.
+    private func linkStateChanged(_ state: GoLinkState) {
+        switch state {
+        case .up:
+            AppLog.log("link up")
+            // While a lost session is being rebuilt the link comes up before
+            // the channels are back. Stay in "reconnecting" until they are, so
+            // the app never shows a connected tunnel with nothing in it.
+            if !isRestoringSession { setReasserting(false) }
+        case .down:
+            AppLog.log("link down — stalling channels while the core redials")
+            setReasserting(true)
+        case .failed:
+            AppLog.log("session lost — rebuilding it")
+            setRestoringSession(true)
+            setReasserting(true)
+        }
+    }
+
+    private func setRestoringSession(_ value: Bool) {
+        restoreLock.lock()
+        restoringSession = value
+        restoreLock.unlock()
+    }
+
+    private var isRestoringSession: Bool {
+        restoreLock.lock()
+        defer { restoreLock.unlock() }
+        return restoringSession
+    }
+
+    /// The Go core reports from its own goroutines; `reasserting` drives the
+    /// connection status the app observes, so set it on the main queue.
+    private func setReasserting(_ value: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.reasserting != value else { return }
+            self.reasserting = value
+        }
+    }
+
+    /// A session is up. For the first one startTunnel has already done the
+    /// work; for a replacement the channels have to be put back, because the
+    /// new session starts with none.
+    private func sessionEstablished(reestablished: Bool) {
+        guard reestablished, let bridge else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            AppLog.log("session reestablished: restoring channels")
+            self.restoreTUNChannel(bridge)
+            self.replayChannels(bridge)
+            self.setRestoringSession(false)
+            self.setReasserting(false)
+            AppGroup.setLastError(nil)
+        }
+    }
+
+    /// Reopens the tun channel on a new session. The old channel took its
+    /// packet flow down with it, so a fresh one is wired in first.
+    private func restoreTUNChannel(_ bridge: GoBridge) {
+        guard let request = tunRequest else { return }
+        try? flowBridge?.close()
+        let flow = PacketFlowBridge(flow: packetFlow)
+        flowBridge = flow
+        bridge.setPacketFlow(flow)
+        do {
+            try openTUNChannel(bridge, request)
+            AppLog.log("tun channel: reopened")
+        } catch {
+            AppLog.log("tun channel: reopen failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func openTUNChannel(_ bridge: GoBridge, _ request: TUNRequest) throws {
+        let json = Control.openTUN(.init(cidr: request.cidr, cidr6: request.cidr6, mtu: request.mtu))
+        try ControlDecode.open(try bridge.control(json))
+    }
+
+    /// Re-issues the channel opens the app made, and re-keys the record with
+    /// the new session's channel ids.
+    private func replayChannels(_ bridge: GoBridge) {
+        channelsLock.lock()
+        let previous = openChannels
+        openChannels = []
+        channelsLock.unlock()
+
+        for channel in previous {
+            do {
+                let id = try ControlDecode.open(try bridge.control(channel.requestJSON))
+                channelsLock.lock()
+                openChannels.append(OpenChannel(id: id, requestJSON: channel.requestJSON))
+                channelsLock.unlock()
+                AppLog.log("channel reopened (#\(id))")
+            } catch {
+                AppLog.log("channel reopen failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Remembers a successful channel open, and forgets one the app closed, so
+    /// a rebuilt session can be brought back to the same set of channels.
+    private func recordChannel(request: String, response: String) {
+        guard let data = request.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let action = object["action"] as? String else { return }
+        switch action {
+        case "open_forward", "open_http", "open_socks5":
+            // A refused open throws here, so only real channels are recorded.
+            guard let id = try? ControlDecode.open(response) else { return }
+            channelsLock.lock()
+            openChannels.append(OpenChannel(id: id, requestJSON: request))
+            channelsLock.unlock()
+        case "close_channel":
+            guard let args = object["args"] as? [String: Any],
+                  let id = (args["channel_id"] as? NSNumber)?.uint64Value else { return }
+            channelsLock.lock()
+            openChannels.removeAll { $0.id == id }
+            channelsLock.unlock()
+        default:
+            break
         }
     }
 
@@ -195,6 +392,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let resp = try bridge.control(json)
+                self.recordChannel(request: json, response: resp)
                 done(TunnelResponse(ok: true, respJSON: resp).encoded())
             } catch {
                 done(TunnelResponse.failure(error.localizedDescription).encoded())

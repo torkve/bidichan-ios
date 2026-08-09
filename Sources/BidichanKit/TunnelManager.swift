@@ -68,6 +68,7 @@ public final class TunnelManager: ObservableObject {
             BidichanConstants.Key.tunMTU: profile.tunMTU,
             BidichanConstants.Key.fullTunnel: profile.fullTunnel,
             BidichanConstants.Key.memoryLimitMB: profile.memoryLimitMB,
+            BidichanConstants.Key.resumeGraceSeconds: profile.resumeGraceSeconds,
         ]
         m.localizedDescription = "bidichan — \(profile.name)"
         m.protocolConfiguration = proto

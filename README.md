@@ -22,6 +22,31 @@ exact wire protocol and a Safari-on-iPhone uTLS fingerprint). See
 `Vendor/README.md`. The app never links the Go framework — only the extension
 does; the app sends control requests over `sendProviderMessage`.
 
+## Staying connected
+
+A phone changes networks constantly, so the tunnel is built to outlive the one
+it started on. When the connection drops — Wi-Fi to cellular, a lift, a dead
+spot — the app does **not** fall back to "Disconnected":
+
+- The Go core resumes the same session over a fresh connection, replaying from
+  byte counters both ends exchange, so open channels and the TCP connections
+  running through them continue where they left off. The tun channel is the
+  exception: packets are dropped while the link is away, and the connections
+  inside the tunnel retransmit as they would on any real link.
+- The extension reports `reasserting` for the duration, which the app shows as
+  "Reconnecting…" with the channel list still in place.
+- An `NWPathMonitor` in the extension tells the core the moment iOS switches
+  interfaces, so the dead socket is replaced immediately instead of after a
+  timeout.
+- **Reconnect window** (per profile, default 90 s) is how long the network may
+  be gone before the session is given up. Past it the extension rebuilds the
+  session and replays the tun channel and every channel the app had opened, so
+  the tunnel comes back on its own — only the connections inside it are lost.
+
+The server must be running a bidichan that supports resumption; against an
+older one the app still reconnects, it just cannot preserve the connections
+inside the tunnel.
+
 ## Targets
 
 - `BidichanKit` — shared framework: profile model, Keychain, App Group paths,

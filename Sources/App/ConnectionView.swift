@@ -10,6 +10,9 @@ struct ConnectionView: View {
 
     private var isActiveProfile: Bool { model.tunnel.activeProfileID == profile.id.uuidString }
     private var connected: Bool { isActiveProfile && model.status == .connected }
+    /// Connected, or reconnecting underneath with the channels still open — the
+    /// UI should look the same either way, only the status line differs.
+    private var live: Bool { isActiveProfile && model.isLive }
     private var channels: [ChannelSnapshot] { model.peers.flatMap { $0.channels ?? [] } }
 
     var body: some View {
@@ -17,13 +20,13 @@ struct ConnectionView: View {
             Section {
                 HStack(spacing: 10) {
                     Circle()
-                        .fill(connected ? Color.green : Color.secondary)
+                        .fill(connected ? Color.green : (live ? Color.orange : Color.secondary))
                         .frame(width: 10, height: 10)
                     Text(isActiveProfile ? model.statusText : "Disconnected")
                     Spacer()
                     if isActiveProfile && model.isBusy { ProgressView() }
                 }
-                if connected {
+                if live {
                     Button(role: .destructive) {
                         model.disconnect()
                     } label: {
@@ -39,7 +42,7 @@ struct ConnectionView: View {
                 }
             }
 
-            if connected {
+            if live {
                 Section("Channels") {
                     if let sp = model.systemProxy {
                         HStack(spacing: 8) {
@@ -93,8 +96,8 @@ struct ConnectionView: View {
         .sheet(isPresented: $showAddChannel) {
             NavigationStack { AddChannelView() }
         }
-        .task(id: connected) {
-            if connected { await model.refreshStatus() }
+        .task(id: live) {
+            if live { await model.refreshStatus() }
         }
     }
 }

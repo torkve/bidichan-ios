@@ -22,6 +22,11 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
     public var fullTunnel: Bool         // route all traffic vs just the tun subnet
     public var memoryLimitMB: Int       // soft Go heap cap inside the NE
 
+    /// How long a network outage may last before the session is given up and
+    /// rebuilt. Inside this window the tunnel stalls and then resumes with its
+    /// channels — and the connections running through them — intact.
+    public var resumeGraceSeconds: Int
+
     // Channels opened automatically once this profile connects.
     public var channels: [ChannelConfig]
 
@@ -39,6 +44,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
                 tunMTU: Int = 1400,
                 fullTunnel: Bool = false,
                 memoryLimitMB: Int = 40,
+                resumeGraceSeconds: Int = 90,
                 channels: [ChannelConfig] = []) {
         self.id = id
         self.name = name
@@ -54,6 +60,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
         self.tunMTU = tunMTU
         self.fullTunnel = fullTunnel
         self.memoryLimitMB = memoryLimitMB
+        self.resumeGraceSeconds = resumeGraceSeconds
         self.channels = channels
     }
 
@@ -79,6 +86,7 @@ public struct Profile: Codable, Identifiable, Equatable, Hashable {
         tunMTU = try c.decodeIfPresent(Int.self, forKey: .tunMTU) ?? 1400
         fullTunnel = try c.decodeIfPresent(Bool.self, forKey: .fullTunnel) ?? false
         memoryLimitMB = try c.decodeIfPresent(Int.self, forKey: .memoryLimitMB) ?? 40
+        resumeGraceSeconds = try c.decodeIfPresent(Int.self, forKey: .resumeGraceSeconds) ?? 90
         channels = try c.decodeIfPresent([ChannelConfig].self, forKey: .channels) ?? []
     }
 

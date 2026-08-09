@@ -80,6 +80,19 @@ struct ProfileEditView: View {
                 Text("Opened automatically after this profile connects.")
             }
 
+            Section {
+                Stepper("Reconnect window: \(profile.resumeGraceSeconds) s",
+                        value: $profile.resumeGraceSeconds, in: 15...600, step: 15)
+            } header: {
+                Text("Reconnecting")
+            } footer: {
+                Text("How long the connection may be gone before the session is given up. "
+                     + "Within this window the tunnel reconnects by itself and open channels — "
+                     + "and the connections running through them — carry on where they left off. "
+                     + "A longer window survives longer outages; it also holds unsent data on the "
+                     + "server for that long.")
+            }
+
             Section("Advanced") {
                 Stepper("NE memory limit: \(profile.memoryLimitMB) MB",
                         value: $profile.memoryLimitMB, in: 20...80, step: 5)

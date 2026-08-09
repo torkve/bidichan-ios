@@ -25,5 +25,6 @@ public enum BidichanConstants {
         public static let tunMTU = "tunMTU"
         public static let fullTunnel = "fullTunnel"
         public static let memoryLimitMB = "memoryLimitMB"
+        public static let resumeGraceSeconds = "resumeGraceSeconds"
     }
 }
