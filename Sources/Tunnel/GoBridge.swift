@@ -132,7 +132,7 @@ final class GoBridge {
     /// Blocks until the session ends; returns the reason (nil = clean shutdown).
     func waitUntilDone() -> String? {
         do {
-            try client.wait()
+            try client.awaitDone()
             return nil
         } catch {
             return error.localizedDescription
