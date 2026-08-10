@@ -75,6 +75,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let memMB = int(conf, K.memoryLimitMB, default: 40)
         let resumeGrace = int(conf, K.resumeGraceSeconds, default: 90)
         let profileID = string(conf, K.profileID)
+        let defaultChannels = Self.decodeChannels(string(conf, K.channels))
 
         AppLog.log("config: addr=\(addr) host=\(hostname) " +
                    "path=\(path.isEmpty ? "(psk-derived)" : path) noTLSBinding=\(noTLSBinding) " +
@@ -139,6 +140,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                         return
                     }
                 }
+                // Opened here rather than by the app: the tunnel can be started
+                // from Settings, or reconnected by the system on demand, and in
+                // neither case is the app running to do it.
+                self.openDefaultChannels(bridge, defaultChannels)
                 AppGroup.setLastError(nil)
                 AppLog.log("startTunnel: connected")
                 self.startWaitLoop()
@@ -276,6 +281,53 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
+    /// Opens the profile's default channels, and publishes the first proxy that
+    /// asked to be the system proxy. Each open is recorded, so a session that
+    /// has to be rebuilt comes back with the same set.
+    private func openDefaultChannels(_ bridge: GoBridge, _ configs: [ChannelConfig]) {
+        var publishedProxy = false
+        for c in configs {
+            let label = c.label.isEmpty ? nil : c.label
+            let json: String
+            if c.kind.isProxy {
+                let args = Control.ProxyArgs(listenSide: .local, listenAddr: c.listenAddr,
+                                             label: label)
+                json = c.kind == .http ? Control.openHTTP(args) : Control.openSocks5(args)
+            } else {
+                json = Control.openForward(.init(listenSide: c.kind.side,
+                                                 listenAddr: c.listenAddr,
+                                                 targetAddr: c.target, label: label))
+            }
+            do {
+                let response = try bridge.control(json)
+                try ControlDecode.ok(response)
+                self.recordChannel(request: json, response: response)
+                AppLog.log("default channel opened: \(c.displayName)")
+            } catch {
+                AppLog.log("default channel \(c.displayName) failed: \(error.localizedDescription)")
+                continue
+            }
+            if c.kind.isProxy, c.routeSystem, !publishedProxy {
+                publishedProxy = true
+                // The system reaches the proxy over loopback whatever it binds.
+                self.systemProxy = (c.kind.proxyKind, "127.0.0.1", c.port)
+                self.rebuildAndApply { err in
+                    if let err {
+                        AppLog.log("system proxy: \(err.localizedDescription)")
+                    } else {
+                        AppLog.log("system proxy: \(c.kind.proxyKind) 127.0.0.1:\(c.port)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Decodes the channels carried in the tunnel configuration.
+    private static func decodeChannels(_ json: String) -> [ChannelConfig] {
+        guard !json.isEmpty, let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([ChannelConfig].self, from: data)) ?? []
+    }
+
     /// Reopens the tun channel on a new session. The old channel took its
     /// packet flow down with it, so a fresh one is wired in first.
     private func restoreTUNChannel(_ bridge: GoBridge) {
@@ -373,6 +425,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler((err.map { TunnelResponse.failure($0.localizedDescription) }
                                    ?? TunnelResponse(ok: true)).encoded())
             }
+        case .getSystemProxy:
+            let p = systemProxy
+            completionHandler(TunnelResponse(ok: true, proxyKind: p?.kind,
+                                             proxyHost: p?.host, proxyPort: p?.port).encoded())
         case .clearSystemProxy:
             systemProxy = nil
             AppLog.log("system proxy: cleared")

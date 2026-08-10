@@ -12,6 +12,7 @@ public struct TunnelRequest: Codable {
         case shellClose
         case setSystemProxy   // publish a local proxy to the system via NEProxySettings
         case clearSystemProxy
+        case getSystemProxy   // what the extension currently publishes, if anything
         case ping
     }
 
@@ -59,6 +60,7 @@ public struct TunnelRequest: Codable {
         .init(op: .setSystemProxy, proxyKind: kind, proxyHost: host, proxyPort: port)
     }
     public static func clearSystemProxy() -> TunnelRequest { .init(op: .clearSystemProxy) }
+    public static func getSystemProxy() -> TunnelRequest { .init(op: .getSystemProxy) }
 }
 
 /// Reply from the tunnel extension to the app.
@@ -69,15 +71,23 @@ public struct TunnelResponse: Codable {
     public var shellID: String?      // op == .shellOpen
     public var dataBase64: String?   // op == .shellRead
     public var eof: Bool?            // op == .shellRead, set when the shell ended
+    // op == .getSystemProxy; nil kind means nothing is published.
+    public var proxyKind: String?
+    public var proxyHost: String?
+    public var proxyPort: Int?
 
     public init(ok: Bool, error: String? = nil, respJSON: String? = nil,
-                shellID: String? = nil, dataBase64: String? = nil, eof: Bool? = nil) {
+                shellID: String? = nil, dataBase64: String? = nil, eof: Bool? = nil,
+                proxyKind: String? = nil, proxyHost: String? = nil, proxyPort: Int? = nil) {
         self.ok = ok
         self.error = error
         self.respJSON = respJSON
         self.shellID = shellID
         self.dataBase64 = dataBase64
         self.eof = eof
+        self.proxyKind = proxyKind
+        self.proxyHost = proxyHost
+        self.proxyPort = proxyPort
     }
 
     public static func failure(_ message: String) -> TunnelResponse { .init(ok: false, error: message) }

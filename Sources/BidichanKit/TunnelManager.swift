@@ -69,6 +69,9 @@ public final class TunnelManager: ObservableObject {
             BidichanConstants.Key.fullTunnel: profile.fullTunnel,
             BidichanConstants.Key.memoryLimitMB: profile.memoryLimitMB,
             BidichanConstants.Key.resumeGraceSeconds: profile.resumeGraceSeconds,
+            // Carried in the configuration, not opened by the app: the tunnel
+            // can be started from Settings, where the app never runs.
+            BidichanConstants.Key.channels: Self.encodeChannels(profile.channels),
         ]
         m.localizedDescription = "bidichan — \(profile.name)"
         m.protocolConfiguration = proto
@@ -80,6 +83,13 @@ public final class TunnelManager: ObservableObject {
         activeProfileID = profile.id.uuidString
         status = m.connection.status
         observe(m)
+    }
+
+    /// JSON for the provider configuration, which only takes property-list types.
+    private static func encodeChannels(_ channels: [ChannelConfig]) -> String {
+        guard let data = try? JSONEncoder().encode(channels),
+              let json = String(data: data, encoding: .utf8) else { return "[]" }
+        return json
     }
 
     public func start() throws {

@@ -17,9 +17,6 @@ final class AppModel: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
-    // Default channels captured at connect time, opened once we reach .connected.
-    private var pendingDefaults: [ChannelConfig] = []
-
     init() {
         // ProfileStore is a nested ObservableObject; @Published var store only
         // fires on reassignment, so forward its changes to our own observers or
@@ -36,14 +33,6 @@ final class AppModel: ObservableObject {
                 switch s {
                 case .connected:
                     self.startPolling()
-                    // Open the profile's default channels once, after the daemon
-                    // is up. Consume the list so a later reassert->connected
-                    // transition doesn't reopen them.
-                    if !self.pendingDefaults.isEmpty {
-                        let defaults = self.pendingDefaults
-                        self.pendingDefaults = []
-                        Task { await self.openDefaultChannels(defaults) }
-                    }
                 case .reasserting:
                     // The tunnel is still installed and the extension is still
                     // there — it is riding out a network change. Keep polling
@@ -94,40 +83,29 @@ final class AppModel: ObservableObject {
             return
         }
         AppGroup.setLastError(nil)   // clear any stale failure from a prior attempt
-        pendingDefaults = profile.channels
         do {
+            // The profile's default channels travel with the configuration and
+            // are opened by the extension, so they come up the same way whether
+            // the tunnel was started here or from Settings.
             try await tunnel.install(profile: profile)
             try tunnel.start()
         } catch {
-            pendingDefaults = []
             errorMessage = error.localizedDescription
         }
     }
 
-    func disconnect() {
-        pendingDefaults = []
-        tunnel.stop()
-        peers = []
+    /// Rewrites the tunnel configuration when the installed profile is edited,
+    /// so a connection started from Settings uses the current settings. Skipped
+    /// while the tunnel is up: replacing the configuration under a live tunnel
+    /// is the system's business, and the edits apply on the next connect.
+    func reinstallIfInstalled(_ profile: Profile) async {
+        guard tunnel.activeProfileID == profile.id.uuidString, !isLive else { return }
+        try? await tunnel.install(profile: profile)
     }
 
-    /// Opens a profile's configured default channels in order once connected,
-    /// publishing the first proxy flagged for system routing.
-    private func openDefaultChannels(_ configs: [ChannelConfig]) async {
-        var appliedSystemProxy = false
-        for c in configs {
-            let label = c.label.isEmpty ? nil : c.label
-            if c.kind.isProxy {
-                await openProxy(c.kind == .http ? .http : .socks5,
-                                side: .local, listen: c.listenAddr, label: label)
-                if c.routeSystem && !appliedSystemProxy {
-                    await setSystemProxy(kind: c.kind.proxyKind, host: "127.0.0.1", port: c.port)
-                    appliedSystemProxy = true
-                }
-            } else {
-                await openForward(side: c.kind.side, listen: c.listenAddr,
-                                  target: c.target, label: label)
-            }
-        }
+    func disconnect() {
+        tunnel.stop()
+        peers = []
     }
 
     // MARK: - Channels
@@ -209,11 +187,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Asks the extension what it currently publishes as the system proxy. The
+    /// extension may have set one itself from the profile's defaults, which the
+    /// app would otherwise never learn about.
+    private func refreshSystemProxy() async {
+        guard let resp = try? await tunnel.send(.getSystemProxy()), resp.ok else { return }
+        if let kind = resp.proxyKind, let host = resp.proxyHost, let port = resp.proxyPort {
+            systemProxy = SystemProxy(kind: kind, host: host, port: port)
+        } else {
+            systemProxy = nil
+        }
+    }
+
     private func startPolling() {
         guard pollTask == nil else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshStatus()
+                await self?.refreshSystemProxy()
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }

@@ -130,6 +130,12 @@ struct ProfileEditView: View {
         if !trimmed.isEmpty {
             try? model.store.setPSK(trimmed, for: profile)
         }
+        // The tunnel configuration carries these settings, and the tunnel can be
+        // started from Settings without the app running. If this is the profile
+        // already installed, write the edits through, or starting it from there
+        // would keep using what was saved last time.
+        let edited = profile
+        Task { await model.reinstallIfInstalled(edited) }
         dismiss()
     }
 }

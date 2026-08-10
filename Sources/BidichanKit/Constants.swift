@@ -26,5 +26,9 @@ public enum BidichanConstants {
         public static let fullTunnel = "fullTunnel"
         public static let memoryLimitMB = "memoryLimitMB"
         public static let resumeGraceSeconds = "resumeGraceSeconds"
+        /// The profile's default channels, JSON-encoded. The extension opens
+        /// them itself, so they must travel with the tunnel configuration
+        /// rather than being handed over by the app.
+        public static let channels = "channels"
     }
 }
