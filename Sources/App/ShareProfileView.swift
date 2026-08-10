@@ -12,6 +12,10 @@ struct ShareProfileView: View {
     @State private var includeKey = false
     @State private var link: String = ""
     @State private var failure: String?
+    /// Built alongside the link rather than in `body`, which would re-encode
+    /// the whole thing on every redraw.
+    @State private var code: UIImage?
+    @State private var sharing = false
 
     private var hasKey: Bool { !(model.store.psk(for: profile) ?? "").isEmpty }
 
@@ -40,8 +44,11 @@ struct ShareProfileView: View {
                 Section { Text(failure).foregroundStyle(.red) }
             } else if !link.isEmpty {
                 Section {
-                    ShareLink(item: link) {
-                        Label("Share link", systemImage: "square.and.arrow.up")
+                    Button {
+                        sharing = true
+                    } label: {
+                        Label(code == nil ? "Share link" : "Share code and link",
+                              systemImage: "square.and.arrow.up")
                     }
                     Button {
                         UIPasteboard.general.string = link
@@ -51,22 +58,25 @@ struct ShareProfileView: View {
                 } header: {
                     Text("Send")
                 } footer: {
-                    Text("Most chat apps will not make this tappable, because the app registers "
+                    Text(code == nil
+                         ? "Most chat apps will not make this tappable, because the app registers "
                          + "its own link scheme rather than a web address. The other device can "
-                         + "copy the text and use Import from a link, or scan the code below.")
+                         + "copy the text and use Import from a link."
+                         : "Sends both. An app that takes images gets the code with the link "
+                         + "alongside it; one that only takes text gets the link. Most chat apps "
+                         + "will not make that text tappable — the other device can copy it and "
+                         + "use Import from a link, or just scan the code.")
                 }
 
                 Section {
-                    if let code = QRCode.image(for: link) {
-                        // Always on white, whatever the appearance: scanners
-                        // expect dark modules on a light field, and the quiet
-                        // zone around them is part of the standard.
+                    if let code {
+                        // The image carries its own white field and quiet zone,
+                        // so it stays scannable wherever it ends up — including
+                        // in someone else's chat app.
                         Image(uiImage: code)
                             .interpolation(.none)
                             .resizable()
                             .scaledToFit()
-                            .padding(12)
-                            .background(.white)
                             .frame(maxWidth: .infinity)
                             .accessibilityLabel("Scannable code for this profile")
                     } else {
@@ -89,6 +99,11 @@ struct ShareProfileView: View {
         }
         .onAppear(perform: rebuild)
         .onChange(of: includeKey) { _, _ in rebuild() }
+        .sheet(isPresented: $sharing) {
+            // The code first, so an app that takes both treats it as the
+            // attachment and the link as the text going with it.
+            ShareSheet(items: code.map { [$0, link] as [Any] } ?? [link])
+        }
     }
 
     private func rebuild() {
@@ -96,9 +111,11 @@ struct ShareProfileView: View {
             link = try ProfileLinking.link(for: profile,
                                            includeKey: includeKey,
                                            psk: model.store.psk(for: profile))
+            code = QRCode.image(for: link)
             failure = nil
         } catch {
             link = ""
+            code = nil
             failure = error.localizedDescription
         }
     }

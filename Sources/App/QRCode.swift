@@ -21,10 +21,17 @@ enum QRCode {
 
     /// A code for `text`, or nil if it will not fit or the encoder refuses it.
     ///
-    /// The result is always dark-on-light, whatever the appearance settings
-    /// say: scanners expect that contrast, and an inverted code is one many
-    /// will not read at all.
-    static func image(for text: String, scale: CGFloat = 10) -> UIImage? {
+    /// The result is opaque, dark-on-light and carries its own quiet zone,
+    /// whatever the appearance settings say. That matters more here than it
+    /// looks: this same image is what gets shared, so it has to be scannable
+    /// standing alone in someone else's chat app, where nothing this app does
+    /// can put a white card behind it.
+    ///
+    /// - Parameters:
+    ///   - scale: points per module.
+    ///   - quietZone: the blank margin, in modules. Four is what the standard
+    ///     asks for, and scanners do rely on it.
+    static func image(for text: String, scale: CGFloat = 10, quietZone: CGFloat = 4) -> UIImage? {
         let data = Data(text.utf8)
         guard data.count <= capacity else { return nil }
 
@@ -37,12 +44,29 @@ enum QRCode {
         filter.correctionLevel = "L"
         guard let output = filter.outputImage else { return nil }
 
-        // The generator emits one pixel per module, which would be scaled up by
-        // the view with smoothing and blur the edges. Scale it here instead,
-        // where the transform keeps the modules square.
+        // The generator emits one pixel per module. Scale it here, where the
+        // transform keeps the modules square, rather than letting a view scale
+        // it up and blur the edges.
         let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let context = CIContext()
         guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cgImage)
+
+        let margin = quietZone * scale
+        let side = scaled.extent.width + margin * 2
+        let format = UIGraphicsImageRendererFormat()
+        // One pixel per point: the code is already at its final size, and
+        // letting the renderer apply the screen's scale would only resample it.
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side),
+                                       format: format).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            // Nearest neighbour, so the module edges stay hard.
+            ctx.cgContext.interpolationQuality = .none
+            UIImage(cgImage: cgImage).draw(in: CGRect(x: margin, y: margin,
+                                                      width: scaled.extent.width,
+                                                      height: scaled.extent.height))
+        }
     }
 }

@@ -62,8 +62,11 @@ credential — send it the way you would send the key, and delete it afterwards.
 Three ways across, because the obvious one does not always work:
 
 - **As a code.** The share screen renders the link as a scannable code, which
-  is the shortest path when both devices are to hand. A profile carrying a
-  certificate can be too large to encode; the screen says so when it is.
+  is the shortest path when both devices are to hand. Sharing sends the code
+  *and* the link together: an app that takes images gets both — Telegram
+  attaches the code and uses the link as its caption — and one that only takes
+  text gets the link. A profile carrying a certificate can be too large to
+  encode; the screen says so when it is, and shares the link alone.
 - **As text, tapped.** Both apps register the `bidichan://profile` scheme, so a
   link opens the app directly wherever it is tappable.
 - **As text, pasted.** Most chat apps — Telegram among them — only linkify web
