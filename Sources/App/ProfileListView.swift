@@ -5,6 +5,7 @@ struct ProfileListView: View {
     @EnvironmentObject var model: AppModel
     @State private var editing: Profile?
     @State private var showLogs = false
+    @State private var sharing: Profile?
 
     var body: some View {
         List {
@@ -25,6 +26,7 @@ struct ProfileListView: View {
                 }
                 .swipeActions(edge: .leading) {
                     Button("Edit") { editing = profile }.tint(.blue)
+                    Button("Share") { sharing = profile }.tint(.indigo)
                 }
                 .swipeActions(edge: .trailing) {
                     Button("Delete", role: .destructive) { model.store.delete(profile) }
@@ -59,6 +61,11 @@ struct ProfileListView: View {
         .sheet(isPresented: $showLogs) {
             NavigationStack {
                 LogView()
+            }
+        }
+        .sheet(item: $sharing) { profile in
+            NavigationStack {
+                ShareProfileView(profile: profile)
             }
         }
     }

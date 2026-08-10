@@ -65,6 +65,12 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         ITSAppUsesNonExemptEncryption: false
+        # Opens a shared profile link. The payload rides in the fragment, so
+        # nothing leaves the device even if the link is opened elsewhere.
+        CFBundleURLTypes:
+          - CFBundleURLName: torkve.bidichan.profile
+            CFBundleTypeRole: Editor
+            CFBundleURLSchemes: [bidichan]
     dependencies:
       - target: BidichanKit
         embed: true
@@ -72,11 +78,13 @@ targets:
         embed: true                 # copies the .appex into PlugIns/
       - package: SwiftTerm
       # The Go framework is embedded ONCE in the app (not the extension — an
-      # .appex may not contain nested frameworks). The app doesn't use it, so
-      # embed without linking; the extension links it and finds it at runtime.
+      # .appex may not contain nested frameworks). The extension links it and
+      # finds it at runtime; the app links it too, for the one thing it needs
+      # from the core outside the tunnel: the shared profile-link format, which
+      # has to be identical on both platforms and so lives in the core.
       - framework: Vendor/Bidichan.xcframework
         embed: true
-        link: false
+        link: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: torkve.bidichan
