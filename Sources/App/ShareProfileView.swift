@@ -51,6 +51,33 @@ struct ShareProfileView: View {
                 } header: {
                     Text("Send")
                 } footer: {
+                    Text("Most chat apps will not make this tappable, because the app registers "
+                         + "its own link scheme rather than a web address. The other device can "
+                         + "copy the text and use Import from a link, or scan the code below.")
+                }
+
+                Section {
+                    if let code = QRCode.image(for: link) {
+                        // Always on white, whatever the appearance: scanners
+                        // expect dark modules on a light field, and the quiet
+                        // zone around them is part of the standard.
+                        Image(uiImage: code)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(12)
+                            .background(.white)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityLabel("Scannable code for this profile")
+                    } else {
+                        Text("This profile is too large to show as a code — its certificate "
+                             + "takes more room than one can hold. Send the link as text instead.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Scan")
+                } footer: {
                     Text(link).font(.caption2.monospaced()).textSelection(.enabled)
                 }
             }

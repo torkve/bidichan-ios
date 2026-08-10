@@ -6,6 +6,7 @@ struct ProfileListView: View {
     @State private var editing: Profile?
     @State private var showLogs = false
     @State private var sharing: Profile?
+    @State private var importingLink = false
 
     var body: some View {
         List {
@@ -46,8 +47,20 @@ struct ProfileListView: View {
                 } label: {
                     Image(systemName: "doc.text.magnifyingglass")
                 }
-                Button {
-                    editing = Profile()
+                // A menu rather than a second button: importing a link is not
+                // something anyone does often, and it does not deserve equal
+                // standing in a toolbar with room for two.
+                Menu {
+                    Button {
+                        editing = Profile()
+                    } label: {
+                        Label("New profile", systemImage: "plus")
+                    }
+                    Button {
+                        importingLink = true
+                    } label: {
+                        Label("Import from a link", systemImage: "link")
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -66,6 +79,11 @@ struct ProfileListView: View {
         .sheet(item: $sharing) { profile in
             NavigationStack {
                 ShareProfileView(profile: profile)
+            }
+        }
+        .sheet(isPresented: $importingLink) {
+            NavigationStack {
+                ImportLinkView()
             }
         }
     }

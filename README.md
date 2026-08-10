@@ -47,6 +47,31 @@ The server must be running a bidichan that supports resumption; against an
 older one the app still reconnects, it just cannot preserve the connections
 inside the tunnel.
 
+## Sharing a profile
+
+A profile can be handed to another device — this app or the Android one — as a
+link. The format lives in the Go core both clients embed, so either can read
+what the other wrote.
+
+The payload rides in the link's *fragment*, which is never sent in a request:
+if the link is opened in a browser instead of the app, the settings do not
+leave the device. It is not encryption, though. Including the pre-shared key is
+a separate choice on the share screen, and a link that carries one is a
+credential — send it the way you would send the key, and delete it afterwards.
+
+Three ways across, because the obvious one does not always work:
+
+- **As a code.** The share screen renders the link as a scannable code, which
+  is the shortest path when both devices are to hand. A profile carrying a
+  certificate can be too large to encode; the screen says so when it is.
+- **As text, tapped.** Both apps register the `bidichan://profile` scheme, so a
+  link opens the app directly wherever it is tappable.
+- **As text, pasted.** Most chat apps — Telegram among them — only linkify web
+  addresses, and never an app's own scheme, so a link sent that way arrives as
+  plain text that cannot be tapped. Copy it and use **Import from a link** in
+  the `+` menu. Nothing is saved until the incoming profile has been shown in
+  full.
+
 ## Targets
 
 - `BidichanKit` — shared framework: profile model, Keychain, App Group paths,
