@@ -44,7 +44,12 @@ enum ProfileLinking {
         if includeKey, let psk, !psk.isEmpty {
             link.pskHex = psk
         }
-        return try link.encode()
+        // gomobile hands back an explicit error pointer for a (string, error)
+        // return rather than making it throw — same shape as GoBridge.control.
+        var err: NSError?
+        let encoded = link.encode(&err)
+        if let err { throw err }
+        return encoded
     }
 
     // MARK: - Importing
@@ -59,7 +64,10 @@ enum ProfileLinking {
     /// Decodes a link. The error carries the core's message, which is written
     /// to be shown as-is.
     static func decode(_ url: URL) throws -> LinkImport {
-        let link = try MobileParseProfileLink(url.absoluteString)
+        var err: NSError?
+        guard let link = MobileParseProfileLink(url.absoluteString, &err), err == nil else {
+            throw err ?? LinkError.unreadable
+        }
         // A fresh identifier: the link deliberately carries none, so importing
         // the same one twice adds a profile rather than overwriting one.
         var profile = Profile(id: UUID())
@@ -122,9 +130,11 @@ enum ProfileLinking {
 
     enum LinkError: LocalizedError {
         case unavailable
+        case unreadable
         var errorDescription: String? {
             switch self {
             case .unavailable: return "Could not build a link."
+            case .unreadable: return "That link could not be read."
             }
         }
     }
