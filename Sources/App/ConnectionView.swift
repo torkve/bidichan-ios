@@ -47,7 +47,7 @@ struct ConnectionView: View {
                     if let sp = model.systemProxy {
                         HStack(spacing: 8) {
                             Image(systemName: "globe").foregroundStyle(.green)
-                            Text("System proxy: \(sp.kind) 127.0.0.1:\(sp.port)")
+                            Text("System proxy: \(sp.kind) 127.0.0.1:\(sp.port.plain)")
                                 .font(.caption)
                             Spacer()
                             Button("Stop") { Task { await model.clearSystemProxy() } }
@@ -62,9 +62,9 @@ struct ConnectionView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 if let l = ch.label, !l.isEmpty {
                                     Text(l).font(.headline)
-                                    Text("\(ch.kind) · #\(ch.id)").font(.caption).foregroundStyle(.secondary)
+                                    Text("\(ch.kind) · #\(ch.id.plain)").font(.caption).foregroundStyle(.secondary)
                                 } else {
-                                    Text("\(ch.kind) · #\(ch.id)").font(.headline)
+                                    Text("\(ch.kind) · #\(ch.id.plain)").font(.headline)
                                 }
                                 Text(ch.description).font(.caption).foregroundStyle(.secondary)
                             }

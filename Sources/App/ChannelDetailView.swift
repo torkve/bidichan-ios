@@ -26,7 +26,7 @@ struct ChannelDetailView: View {
                     LabeledContent("Label", value: l)
                 }
                 LabeledContent("Kind", value: channel.kind)
-                LabeledContent("ID", value: "#\(channel.id)")
+                LabeledContent("ID", value: "#\(channel.id.plain)")
                 if let bound { LabeledContent("Bound", value: bound) }
                 Text(channel.description).font(.caption).foregroundStyle(.secondary)
             }
@@ -71,7 +71,7 @@ struct ChannelDetailView: View {
                 }
             }
         }
-        .navigationTitle("\(channel.kind) #\(channel.id)")
+        .navigationTitle("\(channel.kind) #\(channel.id.plain)")
         .navigationBarTitleDisplayMode(.inline)
     }
 

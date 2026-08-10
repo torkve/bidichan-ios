@@ -51,7 +51,7 @@ struct ProfileEditView: View {
                 TextField("Device IPv6 (optional, e.g. fd00:bd::2/64)", text: $profile.tunCIDR6)
                     .textContentType(.URL)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                Stepper("MTU: \(profile.tunMTU)", value: $profile.tunMTU, in: 1000...1500, step: 20)
+                Stepper("MTU: \(profile.tunMTU.plain)", value: $profile.tunMTU, in: 1000...1500, step: 20)
                 Toggle("Route all traffic (full tunnel)", isOn: $profile.fullTunnel)
             }
 
@@ -81,7 +81,7 @@ struct ProfileEditView: View {
             }
 
             Section {
-                Stepper("Reconnect window: \(profile.resumeGraceSeconds) s",
+                Stepper("Reconnect window: \(profile.resumeGraceSeconds.plain) s",
                         value: $profile.resumeGraceSeconds, in: 15...600, step: 15)
             } header: {
                 Text("Reconnecting")
@@ -94,7 +94,7 @@ struct ProfileEditView: View {
             }
 
             Section("Advanced") {
-                Stepper("NE memory limit: \(profile.memoryLimitMB) MB",
+                Stepper("NE memory limit: \(profile.memoryLimitMB.plain) MB",
                         value: $profile.memoryLimitMB, in: 20...80, step: 5)
                 TextField("CA certificate PEM (optional)", text: $profile.caCertPEM, axis: .vertical)
                     .lineLimit(3...8).font(.caption.monospaced())
