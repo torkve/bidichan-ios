@@ -31,7 +31,6 @@ enum ProfileLinking {
         link.hostname = profile.hostname
         link.path = profile.path
         link.noTlsBinding = profile.noTLSBinding
-        link.fingerprint = profile.fingerprint
         link.caCertPem = profile.caCertPEM
         link.enableTun = profile.enableTUN
         link.tunCidr = profile.tunCIDR
@@ -76,7 +75,10 @@ enum ProfileLinking {
         profile.hostname = link.hostname
         profile.path = link.path
         profile.noTLSBinding = link.noTlsBinding
-        profile.fingerprint = link.fingerprint.isEmpty ? "ios" : link.fingerprint
+        // The TLS fingerprint is deliberately not carried by a link: it
+        // describes the device presenting it, not the profile, and a link
+        // written on Android would otherwise have this phone announce itself as
+        // an Android one. `Profile` starts it at the platform default.
         profile.caCertPEM = link.caCertPem
         profile.enableTUN = link.enableTun
         profile.tunCIDR = link.tunCidr.isEmpty ? "10.42.0.2/24" : link.tunCidr
@@ -107,13 +109,18 @@ enum ProfileLinking {
     private static func decodeChannels(_ json: String) -> [ChannelConfig] {
         guard !json.isEmpty, let data = json.data(using: .utf8),
               let wire = try? JSONDecoder().decode([WireChannel].self, from: data) else { return [] }
-        return wire.map { w in
-            ChannelConfig(label: w.label,
-                          kind: ChannelConfig.Kind(rawValue: w.kind) ?? .http,
-                          allInterfaces: w.allInterfaces,
-                          port: w.port,
-                          target: w.target,
-                          routeSystem: w.routeSystem)
+        // A kind this version does not know is left out rather than defaulted:
+        // the core refuses the kinds it knows to be wrong, so anything unknown
+        // here comes from a newer version, and guessing would open a listener
+        // the sender did not describe.
+        return wire.compactMap { w in
+            guard let kind = ChannelConfig.Kind(rawValue: w.kind) else { return nil }
+            return ChannelConfig(label: w.label,
+                                 kind: kind,
+                                 allInterfaces: w.allInterfaces,
+                                 port: w.port,
+                                 target: w.target,
+                                 routeSystem: w.routeSystem)
         }
     }
 
@@ -126,6 +133,33 @@ enum ProfileLinking {
         var port: Int
         var target: String = ""
         var routeSystem: Bool = false
+
+        init(label: String, kind: String, allInterfaces: Bool,
+             port: Int, target: String, routeSystem: Bool) {
+            self.label = label
+            self.kind = kind
+            self.allInterfaces = allInterfaces
+            self.port = port
+            self.target = target
+            self.routeSystem = routeSystem
+        }
+
+        /// Tolerant decoder, for the same reason `Profile` has one: the
+        /// synthesized `Decodable` calls the throwing `decode(_:forKey:)` for
+        /// every non-optional property and ignores the defaults above, so one
+        /// absent key would throw — and `decodeChannels` would import a profile
+        /// with no channels at all. The core emits every key, so this only has
+        /// to matter for a link from some future version; that is exactly when
+        /// dropping the user's channels would be least explicable.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+            kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+            allInterfaces = try c.decodeIfPresent(Bool.self, forKey: .allInterfaces) ?? false
+            port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 0
+            target = try c.decodeIfPresent(String.self, forKey: .target) ?? ""
+            routeSystem = try c.decodeIfPresent(Bool.self, forKey: .routeSystem) ?? false
+        }
     }
 
     enum LinkError: LocalizedError {
