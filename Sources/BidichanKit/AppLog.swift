@@ -45,6 +45,37 @@ public enum AppLog {
         queue.async { try? FileManager.default.removeItem(at: fileURL) }
     }
 
+    /// A copy of the log somewhere it can be handed to another app, or nil when
+    /// there is nothing to hand over.
+    ///
+    /// Shared as a file rather than as the text itself, because the text is a
+    /// couple of thousand lines and a chat app given that much either truncates
+    /// it or refuses it — at which point whoever is diagnosing receives a
+    /// screenshot of a scrollback, which is the thing this exists to avoid.
+    ///
+    /// Copied out of the App Group container rather than shared from it: the
+    /// receiving app is handed a file it may read whenever it likes, and the
+    /// container is ours. The copy is named for what it is, since that name is
+    /// what shows up in the other app.
+    ///
+    /// The pre-shared key is never written here, and neither is a profile link.
+    /// The server's address and hostname are, and so is the upgrade path, which
+    /// the core derives from the key when a profile does not set one — the
+    /// derivation is one way, so the path gives up nothing about the key, but it
+    /// does say where that server answers rather than serving its decoy.
+    public static func exportURL() -> URL? {
+        let text = read()
+        guard !text.isEmpty else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bidichan-log.txt")
+        do {
+            try Data(text.utf8).write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
     // Keep only the last ~half of the cap when the file grows past it, so the
     // most recent context survives.
     private static func trimIfNeeded(_ url: URL) {

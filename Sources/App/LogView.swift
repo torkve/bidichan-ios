@@ -6,6 +6,9 @@ import BidichanKit
 struct LogView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    /// Written when the log is read, not when the toolbar draws: building it in
+    /// the view body would put a file write on every redraw.
+    @State private var exported: URL?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -30,12 +33,17 @@ struct LogView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { reload() } label: { Image(systemName: "arrow.clockwise") }
-                if !text.isEmpty {
-                    ShareLink(item: text) { Image(systemName: "square.and.arrow.up") }
+                // The file, not the text: a log this long pasted into a chat
+                // app is truncated, and what comes back is a screenshot of it.
+                if let exported {
+                    ShareLink(item: exported, preview: SharePreview("bidichan log")) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
                 Button(role: .destructive) {
                     AppLog.clear()
                     text = ""
+                    exported = nil
                 } label: {
                     Image(systemName: "trash")
                 }
@@ -43,5 +51,8 @@ struct LogView: View {
         }
     }
 
-    private func reload() { text = AppLog.read() }
+    private func reload() {
+        text = AppLog.read()
+        exported = AppLog.exportURL()
+    }
 }
