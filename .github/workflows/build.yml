@@ -61,7 +61,12 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          # Follows the core's go.mod so the toolchain floor lives in one
+          # place. It matters here: cgo before 1.26 emitted an exported
+          # function's argument struct without an alignment attribute, and the
+          # write barrier aborts the process over it on arm64 — the bug is
+          # filed against iOS (golang/go#46893).
+          go-version-file: Vendor/bidichan-src/go.mod
           cache-dependency-path: Vendor/bidichan-src/go.sum
 
       - uses: ruby/setup-ruby@v1
